@@ -1,17 +1,24 @@
 // правка скетча под схему от 30,03,21
-#include <CyberLib.h>       // Подключаем шуструю библиотеку для работы с портами IO
+
+// Сторонняя библиотека для работы с портами ввода-вывода.
+#include <CyberLib.h>
 
 #include <SoftwareSerial.h>
-#define RX 3                            // * Определяем вывод RX (TX на модуле)
-#define TX 2                            // * Определяем вывод TX (RX на модуле)
+// Номер пина для RX (TX на пульте).
+#define RX 3
+// Номер пина для TX (RX на пульте).
+#define TX 2
 
 SoftwareSerial mySerial(RX, TX);
 
-#define potpin_Read A3_Read // переменник СЕРВО
+// Алиас команды чтения положения потенциометра поворота камеры.
+#define potpin_Read A3_Read
 int valServo;
 
-#define RezistX_Read A0_Read //   переменник ШД-2  горизонтальное перемещение
-#define RezistY_Read A1_Read //   переменник ШД-1  вертикальное перемещение
+// Алиас команды чтения положения потенциометра горизонтального перемещения.
+#define RezistX_Read A0_Read
+// Алиас команды чтения положения потенциометра вертикального перемещения камеры.
+#define RezistY_Read A1_Read
 
 // кнопка авария pin D8
 #define AlarmBtn_In   D8_In
@@ -70,6 +77,7 @@ byte ZeroState = 0; // статус уст в "0"  0-нет/1-ДА
 byte SQZ = 0; // статус уст в "0"  0-нет/1-ДА
 byte AlarmState = 0; // статус уст в "0"  0-нет/1-ДА
 byte AlarmStend = 0; // статус уст в "0"  0-нет/1-ДА
+// Количество отправленных пакетов на стенд. Сбрасывается в 0 при достижении значения 250.
 byte count = 0;
 boolean fLink = true;
 boolean CRC = true;
@@ -96,23 +104,22 @@ struct Str {
   byte crc; // контрольная сумма
 };
 
-// структура для ПРМ
-
+// Структура для отправки данных на пульт.
 struct StrOtv {
-  byte NoRun; // режим РАБОТА  0- НЕТ / 1 - ДА
-  byte EndZero; // // режим движ к "0"  0- НЕТ / 1 - ДА
+  byte NoRun;       // режим РАБОТА  0- НЕТ / 1 - ДА
+  byte EndZero;     // режим движ к "0"  0- НЕТ / 1 - ДА
   byte SQZ;
-  byte AlarmStend; // // режим ававрия на стенде  0- НЕТ / 1 - ДА
-  byte Link; // // режим LINK  0- НЕТ / 1 - ДА
-  byte Return; //cчетчик для контроля за связью
-  byte crc;    // контрольная сумма
+  byte AlarmStend;  // режим ававрия на стенде  0- НЕТ / 1 - ДА
+  byte Link;        // режим LINK  0- НЕТ / 1 - ДА
+  byte Return;      //cчетчик для контроля за связью
+  byte crc;         // Контрольная сумма.
 };
 
 // создаём саму структуру
 StrOtv bufOtv;
 
 
-// функция для расчёта crc контрольной суммы
+// Рассчитать контрольную сумму.
 byte crc8_bytes(byte *buffer, byte size) {
   byte crc = 0;
   for (byte i = 0; i < size; i++) {

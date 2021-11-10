@@ -11,55 +11,48 @@
 // отправки и приёма структуры через Serial
 // с контролем целостности данных
 
-#include <CyberLib.h>       // Подключаем шуструю библиотеку для работы с портами IO
+// Сторонняя библиотека для работы с портами ввода-вывода.
+#include <CyberLib.h>
 
 #include <Servo.h>
-//#include <SoftwareSerial.h>
-//SoftwareSerial mySerial(2, 3); // RX, TX
 
-// структура для передачи на пульт
-
+// Структура данных, передаваемых на пульт.
 struct StrOtv {
-  byte NoRun;       // режим РАБОТА  0- НЕТ / 1 - ДА
-  byte EndZero;     //  режим движ к "0"  0- НЕТ / 1 - ДА
+  byte NoRun;       // режим РАБОТА             0 - НЕТ / 1 - ДА
+  byte EndZero;     // режим движение к "0"     0 - НЕТ / 1 - ДА
   byte SQZ;         // концевой 0
-  byte AlarmStend;  // режим ававрия на стенде  0- НЕТ / 1 - ДА
-  byte Link;        // режим LINK  0- НЕТ / 1 - ДА
-  byte Return;      //cчетчик для контроля за связью
+  byte AlarmStend;  // режим ававрия на стенде  0 - НЕТ / 1 - ДА
+  byte Link;        // режим LINK               0 - НЕТ / 1 - ДА
+  byte Return;      // cчетчик для контроля за связью
   byte crc;         // контрольная сумма
 };
-// создаём саму структуру
-//Str buf;
 
-
-// структура для приёма
-// должна соответствовать отправляемой
-
+// Структура данных, принимаемая с пульта.
 struct Str {
-  word VRx;  // переменник джойстика Y
-  word VRy;  // переменник джойстика Y
-  word VR;   // переменник SERVO
-  byte Run; // режим РАБОТА  0- НЕТ / 1 - ДА
-  byte Zero; // // режим движ к "0"  0- НЕТ / 1 - ДА
-  byte Alarm; // // режим АВАРИЯ  0- НЕТ / 1 - ДА
-  byte PK; // // режим реле 5 ПК 0- НЕТ / 1 - ДА
-  byte P6; // // режим реле 6  0- НЕТ / 1 - ДА    сброс питания с драйверов шд
-  byte Link; // // режим LINK  0- НЕТ / 1 - ДА
-  byte Return; //cчетчик для контроля за связью
+  word VRx;    // переменник джойстика X
+  word VRy;    // переменник джойстика Y
+  word VR;     // переменник SERVO
+  byte Run;    // режим РАБОТА  0 - НЕТ / 1 - ДА
+  byte Zero;   // режим движ к "0"  0- НЕТ / 1 - ДА
+  byte Alarm;  // режим АВАРИЯ  0 - НЕТ / 1 - ДА
+  byte PK;     // режим реле 5 ПК 0 - НЕТ / 1 - ДА
+  byte P6;     // режим реле 6  0 - НЕТ / 1 - ДА    сброс питания с драйверов шд
+  byte Link;   // режим LINK  0 - НЕТ / 1 - ДА
+  byte Return; // cчетчик для контроля за связью
   byte crc;    // контрольная сумма
 };
-
-// создаём саму структуру
 Str buf;
 
-
-// Пин для сервопривода
+// Пин для сервопривода поворота камеры.
 int servoPin = 5;
-// Создаем объект
+// Объект для работы с сервоприводом поворота камеры.
 Servo Servo1;
-int valServo, oldvalServo;   // угол отклонения серво/предыдущее значение
+// Угол отклонения сервопривода поворота камеры.
+int valServo;
+// Предыдущее значение отклонения сервопривода поворота камеры.
+int oldvalServo;
 
-// ----  определяем пины для реле ----//
+// Задать алиасы для пинов реле.
 #define Rele1_Out  D14_Out   // А0
 #define Rele1_HI   D14_High
 #define Rele1_LO   D14_Low
@@ -70,12 +63,12 @@ int valServo, oldvalServo;   // угол отклонения серво/пре�
 #define Rele2_LO   D15_Low
 #define Rele2_Read D15_Read
 
-#define Rele3_Out  D16_Out  // А2
+#define Rele3_Out  D16_Out   // А2
 #define Rele3_HI   D16_High
 #define Rele3_LO   D16_Low
 #define Rele3_Read D16_Read
 
-#define Rele4_Out  D17_Out // А3
+#define Rele4_Out  D17_Out   // А3
 #define Rele4_HI   D17_High
 #define Rele4_LO   D17_Low
 #define Rele4_Read D17_Read
@@ -85,20 +78,19 @@ int valServo, oldvalServo;   // угол отклонения серво/пре�
 #define RelePK_LO   D18_Low
 #define RelePK_Read D18_Read
 
-#define Rele6_Out  D19_Out // А5
+#define Rele6_Out  D19_Out   // А5
 #define Rele6_HI   D19_High
 #define Rele6_LO   D19_Low
 #define Rele6_Read D19_Read
 
 // ----  определяем пины для LED ----//
-
 #define LedLink_Out  D4_Out     //  led связи
 #define LedLink_HI   D4_High
 #define LedLink_LO   D4_Low
 #define LedLink_Read D4_Read
 #define  LedLink_Inv D4_Inv
 
-// ----  пины драйверов ШД-1 -------//
+// ----  пины драйверов ШД-1 (горизонтальное перемещение)
 // пин STEP
 #define Step1_Out  D12_Out
 #define Step1_HI   D12_High
@@ -124,7 +116,7 @@ int valServo, oldvalServo;   // угол отклонения серво/пре�
 #define SQDown_Read D8_Read
 #define SQDown_HI   D8_High
 
-//------------- пины драйверов ШД-2 -----------//
+//------------- пины драйверов ШД-2 (вертикальное перемещение)
 // пин STEP
 #define Step2_Out  D7_Out
 #define Step2_HI   D7_High
@@ -152,20 +144,23 @@ byte RunStateStend = 0;  // статус Работа  0-нет/1-ДА
 byte NoRunState = 0;     // статус Работа  0-нет/1-ДА
 byte ZeroStateStend = 0; // статус уст в "0"  0-нет/1-ДА
 byte EndZeroState = 0;   // статус уст в "0"  0-нет/1-ДА
-byte AlarmBtnState = 0; // статус уст в "0"  0-нет/1-ДА
-
+byte AlarmBtnState = 0;  // статус Авария в "0" 0-нет/1-ДА
 byte Return = 0;
 
-byte stepState1 = 0;
+// byte stepState1 = 0;
+// Время, когда был отправлен последний сигнал шага ШД1.
 unsigned long previousMillisD1 = 0;
 
-byte stepState2 = 0;
+// byte stepState2 = 0;
+// Время, когда был отправлен последний сигнал шага ШД2.
 unsigned long previousMillisD2 = 0;
 
 byte counter = 0; // счетчик нет связи
 
-boolean SendOtvet = false; // флаг передачи
-boolean fLink = true;      // флаг LINK
+// Признак необходимости отправить ответ на пульт. 
+boolean SendOtvet = false;
+// Флаг LINK наличия связи с пультом.
+boolean fLink = true;
 boolean fRelePK = false;   // флаг реле ПК
 boolean AlarmDRV = false;  // флаг авария на ШД
 
@@ -177,11 +172,17 @@ word MinX = 1;
 unsigned long MaxY = 100000;
 word MinY = 1;
 unsigned long interval1, interval2 = 0;
-word speedZero_1 = 50000; // скорость в режиме к "0"  ШД-1
-word speedZero_2 = 50000; // скорость в режиме к "0"  ШД-2
-const byte delPuls = 10; // задержка в мкс на формирование импульса STEP упр-я ШД
+// Cкорость в режиме "Переместить в "0"" для  ШД-1.
+word speedZero_1 = 50000;
+// Cкорость в режиме "Переместить в "0"" для  ШД-2.
+word speedZero_2 = 50000;
+// Задержка в мкс на формирование импульса STEP управления ШД.
+const byte delPuls = 10;
 
-unsigned long currentMillis1, currentMillis2, timerZero, tSend, tRele = 0;
+unsigned long currentMillis1, currentMillis2, timerZero = 0;
+// "Время", когда был отправлен на пульт последний ответ.
+unsigned long tSend = 0;
+unsigned long tRele = 0;
 
 
 
@@ -192,47 +193,66 @@ void setup() {
   Serial.setTimeout(3);
   Servo1.attach(servoPin);              // attaches the servo on pin 2 to the servo object
 
+  // Пины реле установить в режим вывода и записать HIGH.
+  Rele1_Out;
+  Rele1_HI;
+  Rele2_Out;
+  Rele2_HI;
+  Rele3_Out;
+  Rele3_HI;
+  Rele4_Out;
+  Rele4_HI;
+  RelePK_Out;
+  RelePK_HI;
+  Rele6_Out;
+  Rele6_HI;
 
-  Rele1_Out;  Rele1_HI;
-  Rele2_Out;  Rele2_HI;
-  Rele3_Out;  Rele3_HI;
-  Rele4_Out;  Rele4_HI;
-  RelePK_Out; RelePK_HI; // выкл
-  Rele6_Out;  Rele6_HI;
+  // Пин "Связь" установить в режим вывода и записать HIGH.
+  LedLink_Out;
+  LedLink_HI;
 
-  //pinMode( LedLink, OUTPUT); digitalWrite( LedLink, HIGH);
-  LedLink_Out;  LedLink_HI; // LedLink
-  //1 ШД
-  // pinMode(Dir1, OUTPUT); digitalWrite(Dir1, LOW);        // пин DIR
-  Dir1_Out;  Dir1_LO;
-  //pinMode(Step1, OUTPUT); digitalWrite(Step1, LOW);      // пин STEP
-  Step1_Out;  Step1_LO;
+  // Пин "Концевой выключатель "Верх"" установить в режим ввода и подтянуть к Vcc.
+  SQUp_In;
+  SQUp_HI;
+  
+  // Пин "Концевой выключатель "Низ"" установить в режим ввода и подтянуть к Vcc.
+  SQDown_In; 
+  SQDown_HI; 
+
+  // Пин "Концевой выключатель "0"" установить в режим ввода и подтянуть к Vcc.
+  SQZero_In;
+  SQZero_HI;
+
+  // ШД1.
+  // Пин "Направление ШД1" установить в режим вывода и записать LO.
+  Dir1_Out;
+  Dir1_LO;
+  // Пин "Шаг ШД1" установить в режим вывода и записать LO.
+  Step1_Out;
+  Step1_LO;
+  // ?
   //pinMode(En1, OUTPUT);   digitalWrite(En1, LOW);        // пин ENA
-  //pinMode(Alm1, INPUT_PULLUP);                           // пин  ALARM
-  Alm1_In; Alm1_HI;// // пин  ALARM INPUT_PULLUP
-
-  // pinMode( SQUp, INPUT_PULLUP);                         // концевой верх
-  SQUp_In; SQUp_HI; // концевой верх INPUT_PULLUP
-  // pinMode( SQDown, INPUT_PULLUP);                       // концевой низ
-  SQDown_In; SQDown_HI; // концевой низ INPUT_PULLUP
-
-  //2  ШД
-  //pinMode(Dir2, OUTPUT); digitalWrite(Dir2, LOW);         // пин DIR
-  Dir2_Out;  Dir2_LO;
-  //pinMode(Step2, OUTPUT); digitalWrite(Step2, LOW);       // пин STEP
-  Step2_Out;  Step2_LO;
-
+  // Пин "Авария" ШД1 установить в режим ввода и подтянуть к Vcc.
+  Alm1_In;
+  Alm1_HI;
+  
+  // ШД2.
+  // Пин "Направление ШД2" установить в режим вывода и записать LO.
+  Dir2_Out;
+  Dir2_LO;
+  // Пин "Шаг ШД2" установить в режим вывода и записать LO.
+  Step2_Out;
+  Step2_LO;
+  // ?
   //pinMode(En2, OUTPUT);   digitalWrite(En2, LOW);         // пин ENA
-  // pinMode(Alm2, INPUT_PULLUP);                           // пин  ALARM
-  Alm2_In; Alm2_HI;// // пин  ALARM INPUT_PULLUP
-
-  // pinMode( SQZero, INPUT_PULLUP);                        // концевой 0
-  SQZero_In; SQZero_HI; //  концевой 0 INPUT_PULLUP
+  // Пин "Авария" ШД2 установить в режим ввода и подтянуть к Vcc.
+  Alm2_In;
+  Alm2_HI;
 
   tSend, tRele = millis();
-}// end setup
+}
 
-// функция для расчёта crc
+// Вычислить CRC.
 byte crc8_bytes(byte *buffer, byte size) {
   byte crc = 0;
   for (byte i = 0; i < size; i++) {
@@ -243,10 +263,7 @@ byte crc8_bytes(byte *buffer, byte size) {
     }
   }
   return crc;
-}// end crc8_bytes
-
-
-
+}
 
 void loop() {
   /* if (millis() >= (tRele + 10000)and fRelePK==false) // после вклчючения ждем 10 сек
@@ -255,87 +272,81 @@ void loop() {
     RelePK_HI;   // выкл с реле ПК
     fRelePK=true;
     }
-
   */
 
-  // читаем родным методом readBytes()
-  // указываем ему буфер-структуру, но приводим тип к byte*
-  // размер можно указать через sizeof()
-
-  if  (Serial.readBytes((byte*)&buf, sizeof(buf)))
+  if (Serial.readBytes((byte*)&buf, sizeof(buf)))
   {
-
-    // считаем crc пакета:
-    // передаём буфер, преобразовав его к (byte*)
-    // а также его ПОЛНЫЙ размер, включая байт crc
     byte CRC = crc8_bytes((byte*)&buf, sizeof(buf));
-    // если crc равен 0, данные верны (такой у него алгоритм расчёта)
-
+    // Если контрольная сумма совпадает.
     if (CRC == 0) {
       counter = 0;
+
+      // Выставить флаг "Связь".
       fLink = true;
       if (buf.Link == 1)
-
         LedLink_Inv; //мигаем LED  LINK  когда обмен данными
       else
         LedLink_HI; // LED  LINK  просто горит когда нет обмена данными
+
       // для стенда
       RezistX = buf.VRx;
       RezistY = buf.VRy;
       valServo = buf.VR;
       RunStateStend = buf.Run;
-
       ZeroStateStend = buf.Zero;
-      if (ZeroStateStend == 0)EndZeroState = 0;
+
+      if (ZeroStateStend == 0)
+        EndZeroState = 0;
       AlarmBtnState = buf.Alarm;
       // вкл с реле ПК
-      if (buf.PK == 1) RelePK_LO;  else   RelePK_HI; // выкл с реле ПК
+      if (buf.PK == 1)
+        RelePK_LO;
+      else
+        RelePK_HI; // выкл с реле ПК
       // вкл с реле 6
-      if (buf.P6 == 1) Rele6_LO;  else   Rele6_HI; // выкл с реле 6
+      if (buf.P6 == 1)
+        Rele6_LO;
+      else
+        Rele6_HI; // выкл с реле 6
 
       Return = buf.Return;
       if (AlarmBtnState == 1) EndZeroState = 0;
       SendOtvet = true;
       tSend = millis();
-
-
-    } // end  if (CRC == 0
-
-  }// end if (Serial.readBytes
+    }
+  }
   else
   { //  если нет обмена данными вкл.счетчик
     counter++;
-    if (counter > 250 ) {
-      fLink = false;  // подняли флаг нет связи
-    }
+    if (counter > 250 )
+      // Выставить флаг отсутствия связи с пультом.
+      fLink = false;
   }
+
   //--------- ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
   if (SendOtvet == true)
     if (millis() > tSend + 10) // через 10 мсек
-    { // буфер на отправку
+    { 
+      // буфер на отправку
       StrOtv bufOtv;
-      // заполняем
+
       bufOtv.NoRun = NoRunState;
       bufOtv.EndZero = EndZeroState;
 
       if (SQZero_Read == 1 and SQDown_Read == 1)       // было  (SQZero_Read == 0 and SQDown_Read == 0)
-        bufOtv.SQZ = 1; else bufOtv.SQZ = 0;
+        bufOtv.SQZ = 1;
+      else
+        bufOtv.SQZ = 0;
 
       bufOtv.AlarmStend = AlarmDRV;
-      // Serial.print("AlarmDRV =");Serial.println(AlarmDRV);
       bufOtv.Return = buf.Return; //счетчик отправлений обратно
       // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
       bufOtv.crc = crc8_bytes((byte*)&bufOtv, sizeof(bufOtv) - 1);
-
-      // отправляем родным write()
-      // указываем ему буфер-структуру, но приводим тип к byte*
-      // размер можно указать через sizeof()
 
       //      mySerial.write((byte*)&bufOtv, sizeof(bufOtv));
       Serial.write((byte*)&bufOtv, sizeof(bufOtv));
       //tSend=millis();
       SendOtvet = false;
-
     }
   //---------КОНЕЦ ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
 
@@ -359,7 +370,7 @@ void loop() {
     Rele4_HI;// РЕЛЕ 4 ВЫКЛ
 
 
-  //------ реж НЕ РАБОТА  и нет аварии и есть связь -----//
+  //------ реж НЕ РАБОТА и нет аварии и есть связь -----//
   if ((RunStateStend == 0) and (AlarmBtnState == 0) and  fLink == true and AlarmDRV == false) {
     Rele1_LO;// РЕЛЕ 1 ВКЛ
     Rele2_LO;// РЕЛЕ 2 ВКЛ
@@ -390,11 +401,9 @@ void loop() {
 
 
 
-  //------ включен режим установка в "0" ------//
+  // Если включен режим "Установка в 0".
   if (ZeroStateStend == 1 and RunStateStend == 1) {
-
     //движение ШД-1 к нижнему концевому
-
     if (SQDown_Read != 1)        // было  (SQDown_Read != 0)
     {
       //Serial.println("---- движение ШД-1 к нижнему концевому ----- ");
@@ -417,24 +426,11 @@ void loop() {
         Step1_HI;    // высокий уровень пина
         delayMicroseconds(delPuls);  // ждём X мкс
         Step1_LO;    // низкий уровень пина
-
-        /*    // !было  раньше
-          if (stepState1 == LOW) { stepState1 = HIGH; Step1_HI;}
-          else
-          { stepState1 = LOW; Step1_LO;}
-        */
-
-      } // end  if (currentMillis1 -
-
-    } // end if ((SQDown)!=1)
-
-
+      }
+    }
 
     //--------движение ШД-2 к концевому  "0" ----------//
-
-    if (SQZero_Read != 1)                     //  было (SQZero_Read != 0)
-    { //Serial.println("---- движение ШД-2 к концевому  0 ----- ");
-
+    if (SQZero_Read != 1) {
       currentMillis2 = micros();
 
       Dir2_LO; // направление движение           // было  Dir2_HI;
@@ -478,30 +474,34 @@ void loop() {
 
 
 
-
-
-
   //------ включен режим РАБОТА  движение от джойстиков ------//
   if ((RunStateStend == 1) and (ZeroStateStend != 1))
-    if ((AlarmBtnState != 1) and AlarmDRV == false and  fLink == true)     { // если не нажата кн.АВАРИЯ, нет аварии от ШД, есть связь
+    // Если не нажата кнопка АВАРИЯ и нет аварии от ШД и есть связь.
+    if ((AlarmBtnState != 1) and AlarmDRV == false and fLink == true) {
       NoRunState = 0;
 
       // если есть изменения в позиции СЕРВО то крутим ее
-      if ((valServo != oldvalServo)) Servo1.write(valServo);
+      if ((valServo != oldvalServo))
+        Servo1.write(valServo);
       oldvalServo = valServo;
 
       // ----- РАБОТА  ШД 1  ------------
-      if (RezistX < 525 and RezistX > 480)     Step1_LO;
+      if (RezistX < 525 and RezistX > 480)
+        Step1_LO;
 
-      if (SQUp_Read != 1)    // было  (SQUp_Read != 0)
+      // Если не в крайнем верхнем положении.
+      if (SQUp_Read != 1)
       {
-        if (RezistX > (525))     // движение - >
+        // Если направление вверх.
+        if (RezistX > (525)) {
+          currentMillis1 = micros();
 
-        { currentMillis1 = micros();
+          // Вычислить интервал, спустя который можно посылать повторный импульс.
+          // Чем ближе к нулю, тем больше интервал.
+          interval1 = map(RezistX, 525, 1023, MaxX, MinX);
 
-          interval1  = map(RezistX, 525, 1023, MaxX, MinX);
-
-          Dir1_HI;  // направление движение
+          // Направление движения вверх.
+          Dir1_HI;
 
           if (currentMillis1 - previousMillisD1 >= interval1) {
             previousMillisD1 = currentMillis1;
@@ -520,29 +520,19 @@ void loop() {
             Step1_HI;    // высокий уровень пина
             delayMicroseconds(delPuls);  // ждём X мкс
             Step1_LO;    // низкий уровень пина
+          }
+        }
+      }
 
-
-            /*    // !было  раньше
-                  if (stepState1 == LOW) {stepState1 = HIGH; Step1_HI; }
-                  else
-                  { stepState1 = LOW;  Step1_LO; }
-            */
-          }// end   if (currentMillis1 - previousMillisD1
-
-
-        } // end   if (RezistX > (525)
-      }// if (SQUp)!=1)
-
-
-      if (SQDown_Read != 1)        // было (SQDown_Read != 0)
+      // Если не в крайнем нижнем положении.
+      if (SQDown_Read != 1)
       {
-        if (RezistX < (480)) { //  <-  движение
-
-
+        // Если направление вниз.
+        if (RezistX < (480)) {
           interval1 = map(RezistX, 0, 480, MinX, MaxX);
           currentMillis1 = micros();
-          Dir1_LO;  // направление движение
-
+          // Направление движения вниз.
+          Dir1_LO;
 
           if (currentMillis1 - previousMillisD1 >= interval1) {
             previousMillisD1 = currentMillis1;
@@ -561,30 +551,22 @@ void loop() {
             Step1_HI;    // высокий уровень пина
             delayMicroseconds(delPuls);  // ждём X мкс
             Step1_LO;    // низкий уровень пина
+          }
+        }
+      }
 
-            /*    // !было  раньше
-                  if (stepState1 == LOW) {stepState1 = HIGH;Step1_HI; }
-                  else
-                  { stepState1 = LOW; Step1_LO;}
-            */
-          }// end if (currentMillis1
-
-
-        }// end if (RezistX < (480)
-      }// end if ((SQDown)!=1)
-
-
-      // -----КОНЕЦ РАБОТА  ШД 1  ------------
 
       // ----- РАБОТА  ШД 2  ------------
-      if (RezistY < 525 and RezistY > 480)     Step2_LO;
+      if (RezistY < 525 and RezistY > 480)
+        Step2_LO;
 
-      if (RezistY > (525)) { // движение - >
-
+      // Движение вправо.
+      if (RezistY > (525)) {
         currentMillis2 = micros();
-        interval2 = map(RezistY, 525, 1023, MaxY, MinY); // настройка шага движения
+        interval2 = map(RezistY, 525, 1023, MaxY, MinY);
 
-        Dir2_LO;//напрвление движения          //  было Dir2_HI;
+        // Направление движения вправо.
+        Dir2_LO;
 
         if (currentMillis2 - previousMillisD2 >= interval2) {
           previousMillisD2 = currentMillis2;
@@ -601,21 +583,14 @@ void loop() {
           Step2_HI;    // высокий уровень пина
           delayMicroseconds(delPuls);  // ждём X мкс
           Step2_LO;    // низкий уровень пина
+        }
+      }
 
-          /*    // !было  раньше
-              if (stepState2 == LOW) {stepState2 = HIGH; Step2_HI;}
-                else
-                {  stepState2 = LOW;  Step2_LO;  }
-          */
-        } // end  if (currentMillis2 - previousMillisD2
-
-      }// end if (RezistA1 > (521)
-
-      if (RezistY < (480)) { // <-  движение
-
-        interval2 = map(RezistY, 0, 480, MinY, MaxY); // настройка шага движения
+      // Если направление движения влево.
+      if (RezistY < (480)) {
+        interval2 = map(RezistY, 0, 480, MinY, MaxY);
         currentMillis2 = micros();
-        Dir2_HI;    //напрвление движения         //  было Dir2_LO;
+        Dir2_HI;
 
         if (currentMillis2 - previousMillisD2 >= interval2) {
           previousMillisD2 = currentMillis2;
@@ -632,24 +607,8 @@ void loop() {
           Step2_HI;    // высокий уровень пина
           delayMicroseconds(delPuls);  // ждём X мкс
           Step2_LO;    // низкий уровень пина
-
-
-
-          /*    // !было  раньше
-               if (stepState2 == LOW) {stepState2 = HIGH; Step2_HI;}
-                else
-                {  stepState2 = LOW;  Step2_LO;  }
-          */
-        }// end  if (currentMillis2 - previousMillisD2
-
-      } // end if (RezistA1 < (489)
-      // -----КОНЕЦ РАБОТА  ШД 2  ------------
-
-    }// end if (AlarmBtn)!=1)
-
-  //------ конец режима РАБОТА  движение от джойстиков ------//
-
-
-
-
-}// end loop
+        }
+      }
+    }
+  //------ конец режима РАБОТА движение от джойстиков ------//
+}
