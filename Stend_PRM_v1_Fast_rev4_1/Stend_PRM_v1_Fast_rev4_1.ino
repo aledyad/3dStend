@@ -3,8 +3,8 @@
 // Сторонняя библиотека для работы с портами ввода-вывода.
 #include <CyberLib.h>
 
-#include "library\ServoTimer2\ServoTimer2.h"
 #include "library\ServoTimer2\ServoTimer2.cpp"
+#include "library\FastAccelStepper\FastAccelStepper.cpp"
 
 // Структура данных, передаваемых на пульт.
 struct StrOtv {
