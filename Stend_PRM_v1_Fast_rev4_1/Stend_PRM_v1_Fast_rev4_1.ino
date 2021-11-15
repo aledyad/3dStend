@@ -1,10 +1,11 @@
 // "Стенд".
 
-// Сторонняя библиотека для работы с портами ввода-вывода.
+// Библиотека для работы с портами ввода-вывода.
 #include <CyberLib.h>
-
-#include "library\ServoTimer2\ServoTimer2.cpp"
-#include "library\FastAccelStepper\FastAccelStepper.cpp"
+// Библиотека для работы с сервоприводом.
+#include <ServoTimer2.h>
+// Библиотека для работы с шаговыми двигателями.
+#include <FastAccelStepper.h>
 
 // Структура данных, передаваемых на пульт.
 struct StrOtv {
@@ -41,6 +42,14 @@ ServoTimer2 Servo1;
 int valServo;
 // Предыдущее значение отклонения сервопривода поворота камеры.
 int oldvalServo;
+
+// Настройка управления шаговыми двигателями.
+FastAccelStepperEngine engine = FastAccelStepperEngine();
+FastAccelStepper *stepper1 = NULL;
+
+// Пины для шагового двигателя 1 (вертикальное перемещение камеры).
+#define dirPinStepper1 11
+#define stepPinStepper1 12
 
 // Задать алиасы для пинов реле.
 #define Rele1_Out  D14_Out   // А0
@@ -178,10 +187,8 @@ unsigned long tRele = 0;
 
 void setup() {
   Serial.begin(9600);
-  // mySerial.begin(9600);
-  //  mySerial.setTimeout(3);
   Serial.setTimeout(3);
-  Servo1.attach(servoPin);              // attaches the servo on pin 2 to the servo object
+  Servo1.attach(servoPin);
 
   // Пины реле установить в режим вывода и записать HIGH.
   Rele1_Out;
@@ -213,15 +220,10 @@ void setup() {
   SQZero_In;
   SQZero_HI;
 
-  // ШД1.
-  // Пин "Направление ШД1" установить в режим вывода и записать LO.
-  Dir1_Out;
-  Dir1_LO;
-  // Пин "Шаг ШД1" установить в режим вывода и записать LO.
-  Step1_Out;
-  Step1_LO;
-  // ?
-  //pinMode(En1, OUTPUT);   digitalWrite(En1, LOW);        // пин ENA
+  engine.init();
+
+  // Создать объект для работы с ШД1.
+  stepper1 = engine.stepperConnectToPin(stepPinStepper1);
   // Пин "Авария" ШД1 установить в режим ввода и подтянуть к Vcc.
   Alm1_In;
   Alm1_HI;
