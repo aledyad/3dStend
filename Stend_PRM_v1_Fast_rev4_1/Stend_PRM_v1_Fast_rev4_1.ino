@@ -123,19 +123,17 @@ FastAccelStepper *stepper2 = NULL;
 #define SQZero_Read D2_Read
 #define SQZero_HI   D2_High
 
-
-byte RunStateStend = 0;  // статус Работа  0-нет/1-ДА
-byte NoRunState = 0;     // статус Работа  0-нет/1-ДА
-byte ZeroStateStend = 0; // статус Установка в нулевое положение 0-нет/1-ДА
-byte EndZeroState = 0;   // статус Установка в нулевое положение  0-нет/1-ДА
-byte AlarmBtnState = 0;  // статус Аварийная остановка 0-нет/1-ДА
+byte RunStateStend = 0;   // статус Работа  0-нет/1-ДА
+byte MoveToZeroState = 0; // статус Установка в нулевое положение 0-нет/1-ДА
+byte EndZeroState = 0;    // статус Установка в нулевое положение завершена 0-нет/1-ДА
+byte AlarmBtnState = 0;   // статус Аварийная остановка 0-нет/1-ДА
 byte Return = 0;
 
 // Счетчик итераций отсутствия команд от пульта.
 byte counter = 0;
 
 // Признак необходимости отправить ответ на пульт. 
-boolean SendOtvet = false;
+boolean needSendResponse = false;
 // Признак наличия связи с пультом.
 boolean fLink = true;
 boolean fRelePK = false;   // флаг реле ПК
@@ -143,11 +141,9 @@ boolean AlarmDRV = false;  // флаг авария на ШД
 
 // Переменники джойстика
 word RezistX, RezistY = 0;
-unsigned long speed1, speed2 = 0;
-// Задержка в мкс на формирование импульса STEP управления ШД.
-const byte delPuls = 10;
+// Переменная вычисления требуемой скорости двигателя.
+word stepperSpeed;
 
-unsigned long currentMillis1, currentMillis2, timerZero = 0;
 // "Время", когда был отправлен на пульт последний ответ.
 unsigned long tSend = 0;
 unsigned long tRele = 0;
@@ -243,9 +239,9 @@ void loop() {
       RezistY = buf.VRy;
       valServo = buf.VR;
       RunStateStend = buf.Run;
-      ZeroStateStend = buf.Zero;
+      MoveToZeroState = buf.Zero;
 
-      if (ZeroStateStend == 0)
+      if (MoveToZeroState == 0)
         EndZeroState = 0;
       AlarmBtnState = buf.Alarm;
       // вкл с реле ПК
@@ -262,7 +258,7 @@ void loop() {
       Return = buf.Return;
       if (AlarmBtnState == 1)
         EndZeroState = 0;
-      SendOtvet = true;
+      needSendResponse = true;
       tSend = millis();
     }
   } else {
@@ -274,16 +270,16 @@ void loop() {
   }
 
   //--------- ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
-  if (SendOtvet == true)
+  if (needSendResponse == true)
     if (millis() > tSend + 10) // через 10 мсек
     { 
       // буфер на отправку
       StrOtv bufOtv;
 
-      bufOtv.NoRun = NoRunState;
+      bufOtv.NoRun = 0;
       bufOtv.EndZero = EndZeroState;
 
-      if (SQZero_Read == 1 and SQDown_Read == 1)       // было  (SQZero_Read == 0 and SQDown_Read == 0)
+      if (SQZero_Read == 1 and SQDown_Read == 1)
         bufOtv.SQZ = 1;
       else
         bufOtv.SQZ = 0;
@@ -293,10 +289,8 @@ void loop() {
       // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
       bufOtv.crc = crc8_bytes((byte*)&bufOtv, sizeof(bufOtv) - 1);
 
-      //      mySerial.write((byte*)&bufOtv, sizeof(bufOtv));
       Serial.write((byte*)&bufOtv, sizeof(bufOtv));
-      //tSend=millis();
-      SendOtvet = false;
+      needSendResponse = false;
     }
   //---------КОНЕЦ ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
 
@@ -349,7 +343,7 @@ void loop() {
 
 
   // Если включен режим "Установка в 0".
-  if (ZeroStateStend == 1 and RunStateStend == 1) {
+  if (MoveToZeroState == 1 and RunStateStend == 1) {
     // Пока не сработал нижний концевик двигаться вниз.
     if (SQDown_Read != 1) {
       stepper1->setSpeedInHz(STEPPER1_MOVE_ZERO_SPEED_HZ);
@@ -370,23 +364,21 @@ void loop() {
 
     // Если сработали оба концевых выключателя, то выключить режим "Установка в 0".
     if (SQZero_Read == 1 and SQDown_Read == 1) {
-      ZeroStateStend = 0;
+      MoveToZeroState = 0;
       EndZeroState = 1;
     }
   }
 
 
   // Режим "Работа от джойстиков".
-  if ((RunStateStend == 1) and (ZeroStateStend != 1))
+  if ((RunStateStend == 1) and (MoveToZeroState != 1))
     // Если не нажата кнопка АВАРИЯ и нет аварии от ШД и есть связь.
     if ((AlarmBtnState != 1) and AlarmDRV == false and fLink == true) {
-      NoRunState = 0;
-
       // Если есть изменения в позиции СЕРВО, то крутим ее.
-      if ((valServo != oldvalServo))
+      if (valServo != oldvalServo) {
         Servo1.write(valServo);
-      oldvalServo = valServo;
-
+        oldvalServo = valServo;
+      }
 
       // Управление приводом вертикального перемещения камеры.
       // Если не в крайнем верхнем положении.
@@ -394,10 +386,10 @@ void loop() {
         // Если направление вверх.
         if (RezistX > (525)) {
           // Вычислить скорость.
-          speed1 = map(RezistX, 525, 1024, 0, STEPPER1_MAX_SPEED_HZ);
+          stepperSpeed = map(RezistX, 525, 1024, 0, STEPPER1_MAX_SPEED_HZ);
 
           // Задать скорость и направление.
-          stepper1->setSpeedInHz(speed1);
+          stepper1->setSpeedInHz(stepperSpeed);
           stepper1->runForward();
         }
       }
@@ -408,10 +400,10 @@ void loop() {
         // Если направление вниз.
         if (RezistX < (480)) {
           // Вычислить скорость.
-          speed1 = map(RezistX, 0, 480, 0, STEPPER1_MAX_SPEED_HZ);
+          stepperSpeed = map(RezistX, 0, 480, 0, STEPPER1_MAX_SPEED_HZ);
 
           // Задать скорость и направление.
-          stepper1->setSpeedInHz(speed1);
+          stepper1->setSpeedInHz(stepperSpeed);
           stepper1->runBackward();
         }
       }
@@ -420,20 +412,20 @@ void loop() {
       // Если направление вправо.
       if (RezistY > (525)) {
         // Вычислить скорость.
-        speed2 = map(RezistY, 525, 1024, 0, STEPPER2_MAX_SPEED_HZ);
+        stepperSpeed = map(RezistY, 525, 1024, 0, STEPPER2_MAX_SPEED_HZ);
 
         // Задать скорость и направление.
-        stepper2->setSpeedInHz(speed2);
+        stepper2->setSpeedInHz(stepperSpeed);
         stepper2->runForward();
       }
 
       // Если направление влево.
       if (RezistY < (480)) {
         // Вычислить скорость.
-        speed2 = map(RezistY, 0, 480, 0, STEPPER2_MAX_SPEED_HZ);
+        stepperSpeed = map(RezistY, 0, 480, 0, STEPPER2_MAX_SPEED_HZ);
 
         // Задать скорость и направление.
-        stepper2->setSpeedInHz(speed2);
+        stepper2->setSpeedInHz(stepperSpeed);
         stepper2->runBackward();
       }
     }
