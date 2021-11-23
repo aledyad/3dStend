@@ -9,18 +9,19 @@
 #include <AVRStepperPins.h>
 
 // Структура данных, передаваемых на пульт.
-struct StrOtv {
+struct Response {
   byte NoRun;       // режим РАБОТА             0 - НЕТ / 1 - ДА
   byte EndZero;     // режим движение к "0"     0 - НЕТ / 1 - ДА
   byte SQZ;         // концевой 0
-  byte AlarmStend;  // режим ававрия на стенде  0 - НЕТ / 1 - ДА
+  byte AlarmStend;  // режим авария на стенде  0 - НЕТ / 1 - ДА
   byte Link;        // режим LINK               0 - НЕТ / 1 - ДА
   byte Return;      // cчетчик для контроля за связью
   byte crc;         // контрольная сумма
 };
+Response response;
 
 // Структура данных, принимаемая с пульта.
-struct Str {
+struct Request {
   word VRx;    // переменник джойстика X
   word VRy;    // переменник джойстика Y
   word VR;     // переменник SERVO
@@ -33,7 +34,7 @@ struct Str {
   byte Return; // cчетчик для контроля за связью
   byte crc;    // контрольная сумма
 };
-Str buf;
+Request request;
 
 // Пин для сервопривода поворота камеры.
 int servoPin = 5;
@@ -93,7 +94,7 @@ FastAccelStepper *stepper2 = NULL;
 #define stepPinStepper1 stepPinStepperA
 // Пин направления перемещения.
 #define dirPinStepper1 8
-// Пин "Тревога". 
+// Пин "Тревога".
 #define Alm1_In     D7_In
 #define Alm1_Read   D7_Read
 #define Alm1_HI     D7_High
@@ -127,12 +128,11 @@ byte RunStateStend = 0;   // статус Работа  0-нет/1-ДА
 byte MoveToZeroState = 0; // статус Установка в нулевое положение 0-нет/1-ДА
 byte EndZeroState = 0;    // статус Установка в нулевое положение завершена 0-нет/1-ДА
 byte AlarmBtnState = 0;   // статус Аварийная остановка 0-нет/1-ДА
-byte Return = 0;
 
 // Счетчик итераций отсутствия команд от пульта.
 byte counter = 0;
 
-// Признак необходимости отправить ответ на пульт. 
+// Признак необходимости отправить ответ на пульт.
 boolean needSendResponse = false;
 // Признак наличия связи с пультом.
 boolean fLink = true;
@@ -146,15 +146,9 @@ word stepperSpeed;
 
 // "Время", когда был отправлен на пульт последний ответ.
 unsigned long tSend = 0;
-unsigned long tRele = 0;
 
-
-
-void setup() {
-  Serial.begin(9600);
-  Serial.setTimeout(3);
-  Servo1.attach(servoPin);
-
+void setupRelaysPins()
+{
   // Пины реле установить в режим вывода и записать HIGH.
   Rele1_Out;
   Rele1_HI;
@@ -168,6 +162,15 @@ void setup() {
   RelePK_HI;
   Rele6_Out;
   Rele6_HI;
+}
+
+
+void setup() {
+  Serial.begin(9600);
+  Serial.setTimeout(3);
+  Servo1.attach(servoPin);
+
+  setupRelaysPins();
 
   // Пин "Связь" установить в режим вывода и записать HIGH.
   LedLink_Out;
@@ -176,10 +179,10 @@ void setup() {
   // Пин "Концевой выключатель "Верх"" установить в режим ввода и подтянуть к Vcc.
   SQUp_In;
   SQUp_HI;
-  
+
   // Пин "Концевой выключатель "Низ"" установить в режим ввода и подтянуть к Vcc.
-  SQDown_In; 
-  SQDown_HI; 
+  SQDown_In;
+  SQDown_HI;
 
   // Пин "Концевой выключатель "0"" установить в режим ввода и подтянуть к Vcc.
   SQZero_In;
@@ -202,7 +205,7 @@ void setup() {
   Alm2_In;
   Alm2_HI;
 
-  tSend, tRele = millis();
+  tSend = millis();
 }
 
 // Вычислить CRC.
@@ -218,98 +221,106 @@ byte crc8_bytes(byte *buffer, byte size) {
   return crc;
 }
 
-void loop() {
+void stopSteppers()
+{
+  stepper1->stopMove();
+  stepper2->stopMove();
+}
 
-  // Получение команды с пульта.
-  if (Serial.readBytes((byte*)&buf, sizeof(buf))) {
-    byte CRC = crc8_bytes((byte*)&buf, sizeof(buf));
-    // Если контрольная сумма совпадает.
-    if (CRC == 0) {
-      counter = 0;
-
-      // Выставить флаг "Связь".
-      fLink = true;
-      if (buf.Link == 1)
-        LedLink_Inv; //мигаем LED  LINK  когда обмен данными
-      else
-        LedLink_HI; // LED  LINK  просто горит когда нет обмена данными
-
-      // для стенда
-      RezistX = buf.VRx;
-      RezistY = buf.VRy;
-      valServo = buf.VR;
-      RunStateStend = buf.Run;
-      MoveToZeroState = buf.Zero;
-
-      if (MoveToZeroState == 0)
-        EndZeroState = 0;
-      AlarmBtnState = buf.Alarm;
-      // вкл с реле ПК
-      if (buf.PK == 1)
-        RelePK_LO;
-      else
-        RelePK_HI; // выкл с реле ПК
-      // вкл с реле 6
-      if (buf.P6 == 1)
-        Rele6_LO;
-      else
-        Rele6_HI; // выкл с реле 6
-
-      Return = buf.Return;
-      if (AlarmBtnState == 1)
-        EndZeroState = 0;
-      needSendResponse = true;
-      tSend = millis();
-    }
-  } else {
-    //  если нет обмена данными вкл.счетчик
-    counter++;
-    if (counter > 250 )
-      // Выставить флаг отсутствия связи с пультом.
-      fLink = false;
+void processControls()
+{
+  // Если есть изменения в позиции СЕРВО, то крутим ее.
+  if (valServo != oldvalServo) {
+    Servo1.write(valServo);
+    oldvalServo = valServo;
   }
 
-  //--------- ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
-  if (needSendResponse == true)
-    if (millis() > tSend + 10) // через 10 мсек
-    { 
-      // буфер на отправку
-      StrOtv bufOtv;
+  // Управление приводом вертикального перемещения камеры.
+  // Если не в крайнем верхнем положении.
+  if (SQUp_Read != 1) {
+    // Если направление вверх.
+    if (RezistX > (525)) {
+      // Вычислить скорость.
+      stepperSpeed = map(RezistX, 525, 1024, 0, STEPPER1_MAX_SPEED_HZ);
 
-      bufOtv.NoRun = 0;
-      bufOtv.EndZero = EndZeroState;
-
-      if (SQZero_Read == 1 and SQDown_Read == 1)
-        bufOtv.SQZ = 1;
-      else
-        bufOtv.SQZ = 0;
-
-      bufOtv.AlarmStend = AlarmDRV;
-      bufOtv.Return = buf.Return; //счетчик отправлений обратно
-      // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
-      bufOtv.crc = crc8_bytes((byte*)&bufOtv, sizeof(bufOtv) - 1);
-
-      Serial.write((byte*)&bufOtv, sizeof(bufOtv));
-      needSendResponse = false;
+      // Задать скорость и направление.
+      stepper1->setSpeedInHz(stepperSpeed);
+      stepper1->runForward();
     }
-  //---------КОНЕЦ ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
+  }
 
+  // Если не в крайнем нижнем положении.
+  if (SQDown_Read != 1)
+  {
+    // Если направление вниз.
+    if (RezistX < (480)) {
+      // Вычислить скорость.
+      stepperSpeed = map(RezistX, 0, 480, 0, STEPPER1_MAX_SPEED_HZ);
 
-  // --- сигналы АЛАРМ с драйверов ШД ------//
-  if (Alm1_Read == 0 or  Alm2_Read == 0)
-    AlarmDRV = true;  // флаг сигнала АЛАРМ поднят
-  else if (Alm1_Read == 1 and Alm2_Read == 1)
-    AlarmDRV = false; // флаг сигнала АЛАРМ сброшен
+      // Задать скорость и направление.
+      stepper1->setSpeedInHz(stepperSpeed);
+      stepper1->runBackward();
+    }
+  }
 
+  // Управление приводом вращения платформы.
+  // Если направление вправо.
+  if (RezistY > (525)) {
+    // Вычислить скорость.
+    stepperSpeed = map(RezistY, 525, 1024, 0, STEPPER2_MAX_SPEED_HZ);
 
-  //--------- УПРАВЛЯЕМ РЕЛЕ 1-4 ------------------//
+    // Задать скорость и направление.
+    stepper2->setSpeedInHz(stepperSpeed);
+    stepper2->runForward();
+  }
+
+  // Если направление влево.
+  if (RezistY < (480)) {
+    // Вычислить скорость.
+    stepperSpeed = map(RezistY, 0, 480, 0, STEPPER2_MAX_SPEED_HZ);
+
+    // Задать скорость и направление.
+    stepper2->setSpeedInHz(stepperSpeed);
+    stepper2->runBackward();
+  }
+}
+
+void processMoveToZero()
+{
+  // Пока не сработал нижний концевик двигаться вниз.
+  if (SQDown_Read != 1) {
+    stepper1->setSpeedInHz(STEPPER1_MOVE_ZERO_SPEED_HZ);
+    stepper1->runBackward();
+    // Иначе резко остановиться.
+  } else {
+    stepper1->forceStopAndNewPosition(0);
+  }
+
+  // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
+  if (SQZero_Read != 1) {
+    stepper2->setSpeedInHz(STEPPER2_MOVE_ZERO_SPEED_HZ);
+    stepper2->runBackward();
+    // Иначе плавно остановиться.
+  } else {
+    stepper2->stopMove();
+  }
+
+  // Если сработали оба концевых выключателя, то выключить режим "Установка в 0".
+  if (SQZero_Read == 1 and SQDown_Read == 1) {
+    MoveToZeroState = 0;
+    EndZeroState = 1;
+  }
+}
+
+// Управление Реле 1-4.
+void processRelays()
+{
   //---- что делаем если АВАРИЯ или нет связи  -----//
   if (AlarmBtnState == 1 or  fLink == false or AlarmDRV == true ) {
     Rele1_HI; // РЕЛЕ 1 ВЫКЛ
     Rele2_HI; // РЕЛЕ 2 ВЫКЛ
     Rele3_HI; // РЕЛЕ 3 ВЫКЛ
     Rele4_LO; // РЕЛЕ 4 ВКЛ
-    if ( fLink == false) LedLink_HI; // LED LINK просто горит
   }
   else if (AlarmBtnState == 0 and  fLink == true) // нет АВАРИЯ и есть связь
     Rele4_HI;// РЕЛЕ 4 ВЫКЛ
@@ -329,104 +340,131 @@ void loop() {
       Rele1_HI;// РЕЛЕ 1 ВЫКЛ
       Rele2_HI;// РЕЛЕ 2 ВКЛ
       Rele3_HI;// РЕЛЕ 3 ВКЛ
-    } else { 
+    } else {
       Rele4_HI;// РЕЛЕ 4 ВЫКЛ
       Rele1_HI;// РЕЛЕ 1 ВЫКЛ
       Rele2_LO;// РЕЛЕ 2 ВКЛ
       Rele3_LO;// РЕЛЕ 3 ВКЛ
     }
-  } else
-    if (RunStateStend == 0) {
-      Rele3_HI;  // РЕЛЕ 3 ВЫКЛ
+  } else if (RunStateStend == 0) {
+    Rele3_HI;  // РЕЛЕ 3 ВЫКЛ
+  }
+}
+
+void processLinkLed(bool linkExists)
+{
+  // Если связь с пультом есть
+  if (linkExists)
+    // То мигает.
+    LedLink_Inv;
+  else
+    // Иначе постоянно горит.
+    LedLink_HI;
+}
+
+void loop() {
+
+  // Получение команды с пульта.
+  if (Serial.readBytes((byte*)&request, sizeof(request)))
+  {
+    byte CRC = crc8_bytes((byte*)&request, sizeof(request));
+    // Если контрольная сумма совпадает.
+    if (CRC == 0)
+    {
+      counter = 0;
+      fLink = true;
+
+      // для стенда
+      RezistX = request.VRx;
+      RezistY = request.VRy;
+      valServo = request.VR;
+      RunStateStend = request.Run;
+      MoveToZeroState = request.Zero;
+
+      if (MoveToZeroState == 0)
+        EndZeroState = 0;
+      AlarmBtnState = request.Alarm;
+      // вкл с реле ПК
+      if (request.PK == 1)
+        RelePK_LO;
+      else
+        RelePK_HI; // выкл с реле ПК
+      // вкл с реле 6
+      if (request.P6 == 1)
+        Rele6_LO;
+      else
+        Rele6_HI; // выкл с реле 6
+
+      if (AlarmBtnState == 1)
+        EndZeroState = 0;
+      needSendResponse = true;
+      tSend = millis();
     }
-  //---------КОНЕЦ УПРАВЛЯЕМ РЕЛЕ 1-4 ------------------//
-
-
-  // Если включен режим "Установка в 0".
-  if (MoveToZeroState == 1 and RunStateStend == 1) {
-    // Пока не сработал нижний концевик двигаться вниз.
-    if (SQDown_Read != 1) {
-      stepper1->setSpeedInHz(STEPPER1_MOVE_ZERO_SPEED_HZ);
-      stepper1->runBackward();
-    // Иначе резко остановиться.
-    } else {
-      stepper1->forceStopAndNewPosition(0);
-    }
-
-    // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
-    if (SQZero_Read != 1) {
-      stepper2->setSpeedInHz(STEPPER2_MOVE_ZERO_SPEED_HZ);
-      stepper2->runBackward();
-    // Иначе плавно остановиться.
-    } else {
-      stepper2->stopMove();
-    }
-
-    // Если сработали оба концевых выключателя, то выключить режим "Установка в 0".
-    if (SQZero_Read == 1 and SQDown_Read == 1) {
-      MoveToZeroState = 0;
-      EndZeroState = 1;
+  }
+  else
+  {
+    //  если нет обмена данными вкл.счетчик
+    counter++;
+    if (counter > 250)
+    {
+      // Сбросить флаг наличия связи с пультом.
+      fLink = false;
     }
   }
 
+  //--------- ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
+  if (needSendResponse == true)
+    if (millis() > tSend + 10) // через 10 мсек
+    {
+      response.NoRun = 0;
+      response.EndZero = EndZeroState;
 
-  // Режим "Работа от джойстиков".
-  if ((RunStateStend == 1) and (MoveToZeroState != 1))
-    // Если не нажата кнопка АВАРИЯ и нет аварии от ШД и есть связь.
-    if ((AlarmBtnState != 1) and AlarmDRV == false and fLink == true) {
-      // Если есть изменения в позиции СЕРВО, то крутим ее.
-      if (valServo != oldvalServo) {
-        Servo1.write(valServo);
-        oldvalServo = valServo;
-      }
+      if (SQZero_Read == 1 and SQDown_Read == 1)
+        response.SQZ = 1;
+      else
+        response.SQZ = 0;
 
-      // Управление приводом вертикального перемещения камеры.
-      // Если не в крайнем верхнем положении.
-      if (SQUp_Read != 1) {
-        // Если направление вверх.
-        if (RezistX > (525)) {
-          // Вычислить скорость.
-          stepperSpeed = map(RezistX, 525, 1024, 0, STEPPER1_MAX_SPEED_HZ);
+      response.AlarmStend = AlarmDRV;
+      response.Return = request.Return; //счетчик отправлений обратно
+      // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
+      response.crc = crc8_bytes((byte*)&response, sizeof(response) - 1);
 
-          // Задать скорость и направление.
-          stepper1->setSpeedInHz(stepperSpeed);
-          stepper1->runForward();
-        }
-      }
-
-      // Если не в крайнем нижнем положении.
-      if (SQDown_Read != 1)
-      {
-        // Если направление вниз.
-        if (RezistX < (480)) {
-          // Вычислить скорость.
-          stepperSpeed = map(RezistX, 0, 480, 0, STEPPER1_MAX_SPEED_HZ);
-
-          // Задать скорость и направление.
-          stepper1->setSpeedInHz(stepperSpeed);
-          stepper1->runBackward();
-        }
-      }
-
-      // Управление приводом вращения платформы.
-      // Если направление вправо.
-      if (RezistY > (525)) {
-        // Вычислить скорость.
-        stepperSpeed = map(RezistY, 525, 1024, 0, STEPPER2_MAX_SPEED_HZ);
-
-        // Задать скорость и направление.
-        stepper2->setSpeedInHz(stepperSpeed);
-        stepper2->runForward();
-      }
-
-      // Если направление влево.
-      if (RezistY < (480)) {
-        // Вычислить скорость.
-        stepperSpeed = map(RezistY, 0, 480, 0, STEPPER2_MAX_SPEED_HZ);
-
-        // Задать скорость и направление.
-        stepper2->setSpeedInHz(stepperSpeed);
-        stepper2->runBackward();
-      }
+      Serial.write((byte*)&response, sizeof(response));
+      needSendResponse = false;
     }
+  //---------КОНЕЦ ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
+
+
+  // --- сигналы АЛАРМ с драйверов ШД ------//
+  if (Alm1_Read == 0 or Alm2_Read == 0)
+    AlarmDRV = true;  // флаг сигнала АЛАРМ поднят
+  else if (Alm1_Read == 1 and Alm2_Read == 1)
+    AlarmDRV = false; // флаг сигнала АЛАРМ сброшен
+
+  processLinkLed(fLink);
+  processRelays();
+
+  // Если (или):
+  // - на пульте нажали кнопку "Авария";
+  // - пришел сигнал тревоги от двигателей;
+  // - нет связи с пультом;
+  // - стенд выключен;
+  // то остановить двигатели.
+  if ((AlarmBtnState != 0) or AlarmDRV or !fLink or (RunStateStend == 0))
+  {
+    stopSteppers();
+  }
+  else
+  {
+    // Если включен режим "Установка в 0".
+    if (MoveToZeroState == 1) {
+      // Обработать команду перемещения в 0.
+      processMoveToZero();
+    }
+    // Иначе обычный режим управления джойстиками.
+    else
+    {
+      processControls();
+    }
+  }
 }
