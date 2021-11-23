@@ -236,10 +236,14 @@ void processControls()
   }
 
   // Управление приводом вертикального перемещения камеры.
-  // Если не в крайнем верхнем положении.
-  if (SQUp_Read != 1) {
-    // Если направление вверх.
-    if (RezistX > (525)) {
+  // Если направление вверх.
+  if (RezistX > 525)
+  {
+    // Если в крайнем верхнем положении.
+    if (SQUp_Read != 0)
+      stepper1->stopMove();
+    else
+    {
       // Вычислить скорость.
       stepperSpeed = map(RezistX, 525, 1024, 0, STEPPER1_MAX_SPEED_HZ);
 
@@ -247,25 +251,31 @@ void processControls()
       stepper1->setSpeedInHz(stepperSpeed);
       stepper1->runForward();
     }
-  }
 
-  // Если не в крайнем нижнем положении.
-  if (SQDown_Read != 1)
-  {
+  }
+  else
     // Если направление вниз.
-    if (RezistX < (480)) {
-      // Вычислить скорость.
-      stepperSpeed = map(RezistX, 0, 480, 0, STEPPER1_MAX_SPEED_HZ);
+    if (RezistX < 480)
+    {
+      // Если в крайнем нижнем положении.
+      if (SQDown_Read != 0)
+        stepper1->stopMove();
+      else
+      {
+        // Вычислить скорость.
+        stepperSpeed = map(RezistX, 0, 480, 0, STEPPER1_MAX_SPEED_HZ);
 
-      // Задать скорость и направление.
-      stepper1->setSpeedInHz(stepperSpeed);
-      stepper1->runBackward();
+        // Задать скорость и направление.
+        stepper1->setSpeedInHz(stepperSpeed);
+        stepper1->runBackward();
+      }
     }
-  }
+    else
+      stepper1->stopMove();
 
   // Управление приводом вращения платформы.
   // Если направление вправо.
-  if (RezistY > (525)) {
+  if (RezistY > 525) {
     // Вычислить скорость.
     stepperSpeed = map(RezistY, 525, 1024, 0, STEPPER2_MAX_SPEED_HZ);
 
@@ -273,9 +283,8 @@ void processControls()
     stepper2->setSpeedInHz(stepperSpeed);
     stepper2->runForward();
   }
-
   // Если направление влево.
-  if (RezistY < (480)) {
+  if (RezistY < 480) {
     // Вычислить скорость.
     stepperSpeed = map(RezistY, 0, 480, 0, STEPPER2_MAX_SPEED_HZ);
 
@@ -288,25 +297,33 @@ void processControls()
 void processMoveToZero()
 {
   // Пока не сработал нижний концевик двигаться вниз.
-  if (SQDown_Read != 1) {
+  if (SQDown_Read != 1)
+  {
     stepper1->setSpeedInHz(STEPPER1_MOVE_ZERO_SPEED_HZ);
     stepper1->runBackward();
-    // Иначе резко остановиться.
-  } else {
-    stepper1->forceStopAndNewPosition(0);
+    // Иначе остановиться.
+  }
+  else
+  {
+    stepper1->stopMove();
   }
 
   // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
-  if (SQZero_Read != 1) {
+  if (SQZero_Read != 1)
+  {
     stepper2->setSpeedInHz(STEPPER2_MOVE_ZERO_SPEED_HZ);
     stepper2->runBackward();
     // Иначе плавно остановиться.
-  } else {
+  }
+  else
+  {
     stepper2->stopMove();
   }
 
-  // Если сработали оба концевых выключателя, то выключить режим "Установка в 0".
-  if (SQZero_Read == 1 and SQDown_Read == 1) {
+  // Если сработали оба концевых выключателя, то выключить режим "Установка в 0"
+  // и выставить признак того, что стенд находится в нулевом положении.
+  if (SQZero_Read == 1 and SQDown_Read == 1)
+  {
     MoveToZeroState = 0;
     EndZeroState = 1;
   }
