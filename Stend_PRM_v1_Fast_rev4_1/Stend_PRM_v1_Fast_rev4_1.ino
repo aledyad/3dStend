@@ -49,43 +49,44 @@ FastAccelStepperEngine engine = FastAccelStepperEngine();
 FastAccelStepper *stepper1 = NULL;
 FastAccelStepper *stepper2 = NULL;
 
+// Алиасы максимальной скорости двигателей в Гц.
+#define STEPPER1_MAX_SPEED_HZ 200
+#define STEPPER2_MAX_SPEED_HZ 1000
+
+// Cкорость в режиме "Переместить в "0" для двигателей в Гц.
+#define STEPPER1_MOVE_ZERO_SPEED_HZ 100
+#define STEPPER2_MOVE_ZERO_SPEED_HZ 500
+
 // Задать алиасы для пинов реле.
 #define Rele1_Out  D14_Out   // А0
 #define Rele1_HI   D14_High
 #define Rele1_LO   D14_Low
-#define Rele1_Read D14_Read
 
 #define Rele2_Out  D15_Out   // А1
 #define Rele2_HI   D15_High
 #define Rele2_LO   D15_Low
-#define Rele2_Read D15_Read
 
 #define Rele3_Out  D16_Out   // А2
 #define Rele3_HI   D16_High
 #define Rele3_LO   D16_Low
-#define Rele3_Read D16_Read
 
 #define Rele4_Out  D17_Out   // А3
 #define Rele4_HI   D17_High
 #define Rele4_LO   D17_Low
-#define Rele4_Read D17_Read
 
-#define RelePK_Out  D18_Out  // А4
-#define RelePK_HI   D18_High
-#define RelePK_LO   D18_Low
-#define RelePK_Read D18_Read
+#define RelePK_Out D18_Out   // А4
+#define RelePK_HI  D18_High
+#define RelePK_LO  D18_Low
 
 #define Rele6_Out  D19_Out   // А5
 #define Rele6_HI   D19_High
 #define Rele6_LO   D19_Low
-#define Rele6_Read D19_Read
 
-// ----  определяем пины для LED ----//
-#define LedLink_Out  D4_Out     //  led связи
-#define LedLink_HI   D4_High
-#define LedLink_LO   D4_Low
-#define LedLink_Read D4_Read
-#define  LedLink_Inv D4_Inv
+// Задать алиася для пина "Индикатор связи".
+#define LedLink_Out D4_Out
+#define LedLink_HI  D4_High
+#define LedLink_LO  D4_Low
+#define LedLink_Inv D4_Inv
 
 // Пины для шагового двигателя 1 (вертикальное перемещение камеры).
 // Пин импульсов перемещения. stepPinStepperA = 9.
@@ -125,36 +126,24 @@ FastAccelStepper *stepper2 = NULL;
 
 byte RunStateStend = 0;  // статус Работа  0-нет/1-ДА
 byte NoRunState = 0;     // статус Работа  0-нет/1-ДА
-byte ZeroStateStend = 0; // статус уст в "0"  0-нет/1-ДА
-byte EndZeroState = 0;   // статус уст в "0"  0-нет/1-ДА
-byte AlarmBtnState = 0;  // статус Авария в "0" 0-нет/1-ДА
+byte ZeroStateStend = 0; // статус Установка в нулевое положение 0-нет/1-ДА
+byte EndZeroState = 0;   // статус Установка в нулевое положение  0-нет/1-ДА
+byte AlarmBtnState = 0;  // статус Аварийная остановка 0-нет/1-ДА
 byte Return = 0;
 
-// Время, когда был отправлен последний сигнал шага ШД1.
-unsigned long previousMillisD1 = 0;
-
-// Время, когда был отправлен последний сигнал шага ШД2.
-unsigned long previousMillisD2 = 0;
-
-byte counter = 0; // счетчик нет связи
+// Счетчик итераций отсутствия команд от пульта.
+byte counter = 0;
 
 // Признак необходимости отправить ответ на пульт. 
 boolean SendOtvet = false;
-// Флаг LINK наличия связи с пультом.
+// Признак наличия связи с пультом.
 boolean fLink = true;
 boolean fRelePK = false;   // флаг реле ПК
 boolean AlarmDRV = false;  // флаг авария на ШД
 
-
-// переменники джойстика
+// Переменники джойстика
 word RezistX, RezistY = 0;
-unsigned long MaxSpeed1Hz = 200;
-unsigned long MaxSpeed2Hz = 1000;
 unsigned long speed1, speed2 = 0;
-// Cкорость в режиме "Переместить в "0"" для  ШД-1.
-word speedZero_1 = 100;
-// Cкорость в режиме "Переместить в "0"" для  ШД-2.
-word speedZero_2 = 500;
 // Задержка в мкс на формирование импульса STEP управления ШД.
 const byte delPuls = 10;
 
@@ -234,13 +223,6 @@ byte crc8_bytes(byte *buffer, byte size) {
 }
 
 void loop() {
-  /* if (millis() >= (tRele + 10000)and fRelePK==false) // после вклчючения ждем 10 сек
-    {RelePK_LO;   // вкл с реле ПК
-    delay(1000); // через 1 c
-    RelePK_HI;   // выкл с реле ПК
-    fRelePK=true;
-    }
-  */
 
   // Получение команды с пульта.
   if (Serial.readBytes((byte*)&buf, sizeof(buf))) {
@@ -370,7 +352,7 @@ void loop() {
   if (ZeroStateStend == 1 and RunStateStend == 1) {
     // Пока не сработал нижний концевик двигаться вниз.
     if (SQDown_Read != 1) {
-      stepper1->setSpeedInHz(speedZero_1);
+      stepper1->setSpeedInHz(STEPPER1_MOVE_ZERO_SPEED_HZ);
       stepper1->runBackward();
     // Иначе резко остановиться.
     } else {
@@ -379,7 +361,7 @@ void loop() {
 
     // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
     if (SQZero_Read != 1) {
-      stepper2->setSpeedInHz(speedZero_2);
+      stepper2->setSpeedInHz(STEPPER2_MOVE_ZERO_SPEED_HZ);
       stepper2->runBackward();
     // Иначе плавно остановиться.
     } else {
@@ -412,7 +394,7 @@ void loop() {
         // Если направление вверх.
         if (RezistX > (525)) {
           // Вычислить скорость.
-          speed1 = map(RezistX, 525, 1024, 0, MaxSpeed1Hz);
+          speed1 = map(RezistX, 525, 1024, 0, STEPPER1_MAX_SPEED_HZ);
 
           // Задать скорость и направление.
           stepper1->setSpeedInHz(speed1);
@@ -426,7 +408,7 @@ void loop() {
         // Если направление вниз.
         if (RezistX < (480)) {
           // Вычислить скорость.
-          speed1 = map(RezistX, 0, 480, 0, MaxSpeed1Hz);
+          speed1 = map(RezistX, 0, 480, 0, STEPPER1_MAX_SPEED_HZ);
 
           // Задать скорость и направление.
           stepper1->setSpeedInHz(speed1);
@@ -438,7 +420,7 @@ void loop() {
       // Если направление вправо.
       if (RezistY > (525)) {
         // Вычислить скорость.
-        speed2 = map(RezistY, 525, 1024, 0, MaxSpeed2Hz);
+        speed2 = map(RezistY, 525, 1024, 0, STEPPER2_MAX_SPEED_HZ);
 
         // Задать скорость и направление.
         stepper2->setSpeedInHz(speed2);
@@ -448,7 +430,7 @@ void loop() {
       // Если направление влево.
       if (RezistY < (480)) {
         // Вычислить скорость.
-        speed2 = map(RezistY, 0, 480, 0, MaxSpeed2Hz);
+        speed2 = map(RezistY, 0, 480, 0, STEPPER2_MAX_SPEED_HZ);
 
         // Задать скорость и направление.
         stepper2->setSpeedInHz(speed2);
