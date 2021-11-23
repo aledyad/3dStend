@@ -6,6 +6,7 @@
 #include <ServoTimer2.h>
 // Библиотека для работы с шаговыми двигателями.
 #include <FastAccelStepper.h>
+#include <AVRStepperPins.h>
 
 // Структура данных, передаваемых на пульт.
 struct StrOtv {
@@ -43,13 +44,10 @@ int valServo;
 // Предыдущее значение отклонения сервопривода поворота камеры.
 int oldvalServo;
 
-// Настройка управления шаговыми двигателями.
+// Объекты для управления шаговыми двигателями.
 FastAccelStepperEngine engine = FastAccelStepperEngine();
 FastAccelStepper *stepper1 = NULL;
-
-// Пины для шагового двигателя 1 (вертикальное перемещение камеры).
-#define dirPinStepper1 11
-#define stepPinStepper1 12
+FastAccelStepper *stepper2 = NULL;
 
 // Задать алиасы для пинов реле.
 #define Rele1_Out  D14_Out   // А0
@@ -89,51 +87,37 @@ FastAccelStepper *stepper1 = NULL;
 #define LedLink_Read D4_Read
 #define  LedLink_Inv D4_Inv
 
-// ----  пины драйверов ШД-1 (горизонтальное перемещение)
-// пин STEP
-#define Step1_Out  D12_Out
-#define Step1_HI   D12_High
-#define Step1_LO   D12_Low
-#define Step1_Read D12_Read
-// пин DIR
-#define Dir1_Out  D11_Out
-#define Dir1_HI   D11_High
-#define Dir1_LO   D11_Low
-#define Dir1_Read D11_Read
-// пин ALARM
-#define Alm1_In   D10_In
-#define Alm1_Read D10_Read
-#define Alm1_HI   D10_High
+// Пины для шагового двигателя 1 (вертикальное перемещение камеры).
+// Пин импульсов перемещения. stepPinStepperA = 9.
+#define stepPinStepper1 stepPinStepperA
+// Пин направления перемещения.
+#define dirPinStepper1 8
+// Пин "Тревога". 
+#define Alm1_In     D7_In
+#define Alm1_Read   D7_Read
+#define Alm1_HI     D7_High
 
-// пин концевой ВВЕРХ   SQ1
-#define SQUp_In   D9_In
-#define SQUp_Read D9_Read
-#define SQUp_HI   D9_High
+// Пины для шагового двигателя 2 (вращение платформы).
+// Пин направления перемещения.
+#define dirPinStepper2 11
+// Пин импульсов перемещения. stepPinStepperB = 10.
+#define stepPinStepper2 stepPinStepperB
+// Пин "Тревога".
+#define Alm2_In     D12_In
+#define Alm2_Read   D12_Read
+#define Alm2_HI     D12_High
 
-// пин концевой НИЗ   SQ2
-#define SQDown_In   D8_In
-#define SQDown_Read D8_Read
-#define SQDown_HI   D8_High
+// Пин "Крайнее верхнее положение камеры". SQ1
+#define SQUp_In     D6_In
+#define SQUp_Read   D6_Read
+#define SQUp_HI     D6_High
 
-//------------- пины драйверов ШД-2 (вертикальное перемещение)
-// пин STEP
-#define Step2_Out  D7_Out
-#define Step2_HI   D7_High
-#define Step2_LO   D7_Low
-#define Step2_Read D7_Read
+// Пин "Крайнее нижнее положение камеры". SQ2
+#define SQDown_In   D3_In
+#define SQDown_Read D3_Read
+#define SQDown_HI   D3_High
 
-// пин DIR
-#define Dir2_Out  D6_Out
-#define Dir2_HI   D6_High
-#define Dir2_LO   D6_Low
-#define Dir2_Read D6_Read
-
-// пин ALARM
-#define Alm2_In   D3_In
-#define Alm2_Read D3_Read
-#define Alm2_HI   D3_High
-
-// пин концевой SQ3
+// Пин "Нулевое положение платформы". SQ3
 #define SQZero_In   D2_In
 #define SQZero_Read D2_Read
 #define SQZero_HI   D2_High
@@ -146,11 +130,9 @@ byte EndZeroState = 0;   // статус уст в "0"  0-нет/1-ДА
 byte AlarmBtnState = 0;  // статус Авария в "0" 0-нет/1-ДА
 byte Return = 0;
 
-// byte stepState1 = 0;
 // Время, когда был отправлен последний сигнал шага ШД1.
 unsigned long previousMillisD1 = 0;
 
-// byte stepState2 = 0;
 // Время, когда был отправлен последний сигнал шага ШД2.
 unsigned long previousMillisD2 = 0;
 
@@ -166,15 +148,13 @@ boolean AlarmDRV = false;  // флаг авария на ШД
 
 // переменники джойстика
 word RezistX, RezistY = 0;
-unsigned long MaxX = 100000;
-word MinX = 1;
-unsigned long MaxY = 100000;
-word MinY = 1;
-unsigned long interval1, interval2 = 0;
+unsigned long MaxSpeed1Hz = 200;
+unsigned long MaxSpeed2Hz = 1000;
+unsigned long speed1, speed2 = 0;
 // Cкорость в режиме "Переместить в "0"" для  ШД-1.
-word speedZero_1 = 50000;
+word speedZero_1 = 100;
 // Cкорость в режиме "Переместить в "0"" для  ШД-2.
-word speedZero_2 = 50000;
+word speedZero_2 = 500;
 // Задержка в мкс на формирование импульса STEP управления ШД.
 const byte delPuls = 10;
 
@@ -220,23 +200,19 @@ void setup() {
   SQZero_In;
   SQZero_HI;
 
+  // Инициализировать библиотеку для работы с ШД.
   engine.init();
-
-  // Создать объект для работы с ШД1.
+  // Создать объекты для работы с ШД.
   stepper1 = engine.stepperConnectToPin(stepPinStepper1);
+  stepper1->setDirectionPin(dirPinStepper1);
+  stepper1->setAcceleration(1000);
+  stepper2 = engine.stepperConnectToPin(stepPinStepper2);
+  stepper2->setDirectionPin(dirPinStepper2);
+  stepper2->setAcceleration(200);
+
   // Пин "Авария" ШД1 установить в режим ввода и подтянуть к Vcc.
   Alm1_In;
   Alm1_HI;
-  
-  // ШД2.
-  // Пин "Направление ШД2" установить в режим вывода и записать LO.
-  Dir2_Out;
-  Dir2_LO;
-  // Пин "Шаг ШД2" установить в режим вывода и записать LO.
-  Step2_Out;
-  Step2_LO;
-  // ?
-  //pinMode(En2, OUTPUT);   digitalWrite(En2, LOW);         // пин ENA
   // Пин "Авария" ШД2 установить в режим ввода и подтянуть к Vcc.
   Alm2_In;
   Alm2_HI;
@@ -266,8 +242,8 @@ void loop() {
     }
   */
 
-  if (Serial.readBytes((byte*)&buf, sizeof(buf)))
-  {
+  // Получение команды с пульта.
+  if (Serial.readBytes((byte*)&buf, sizeof(buf))) {
     byte CRC = crc8_bytes((byte*)&buf, sizeof(buf));
     // Если контрольная сумма совпадает.
     if (CRC == 0) {
@@ -302,13 +278,13 @@ void loop() {
         Rele6_HI; // выкл с реле 6
 
       Return = buf.Return;
-      if (AlarmBtnState == 1) EndZeroState = 0;
+      if (AlarmBtnState == 1)
+        EndZeroState = 0;
       SendOtvet = true;
       tSend = millis();
     }
-  }
-  else
-  { //  если нет обмена данными вкл.счетчик
+  } else {
+    //  если нет обмена данными вкл.счетчик
     counter++;
     if (counter > 250 )
       // Выставить флаг отсутствия связи с пультом.
@@ -349,6 +325,7 @@ void loop() {
   else if (Alm1_Read == 1 and Alm2_Read == 1)
     AlarmDRV = false; // флаг сигнала АЛАРМ сброшен
 
+
   //--------- УПРАВЛЯЕМ РЕЛЕ 1-4 ------------------//
   //---- что делаем если АВАРИЯ или нет связи  -----//
   if (AlarmBtnState == 1 or  fLink == false or AlarmDRV == true ) {
@@ -371,148 +348,75 @@ void loop() {
 
   // если реж РАБОТА
   if (RunStateStend == 1) {
-    if (AlarmBtnState == 1 or  fLink == false or AlarmDRV == true )
-    { Rele4_LO; // РЕЛЕ 4 ВКЛ
+    if (AlarmBtnState == 1 or  fLink == false or AlarmDRV == true ) {
+      Rele4_LO; // РЕЛЕ 4 ВКЛ
       Rele1_HI;// РЕЛЕ 1 ВЫКЛ
       Rele2_HI;// РЕЛЕ 2 ВКЛ
       Rele3_HI;// РЕЛЕ 3 ВКЛ
-    }
-    else
-    { Rele4_HI;// РЕЛЕ 4 ВЫКЛ
-
+    } else { 
+      Rele4_HI;// РЕЛЕ 4 ВЫКЛ
       Rele1_HI;// РЕЛЕ 1 ВЫКЛ
       Rele2_LO;// РЕЛЕ 2 ВКЛ
       Rele3_LO;// РЕЛЕ 3 ВКЛ
     }
-  }
-  else if (RunStateStend == 0) {
-    Rele3_HI;  // РЕЛЕ 3 ВЫКЛ
-  }
-
+  } else
+    if (RunStateStend == 0) {
+      Rele3_HI;  // РЕЛЕ 3 ВЫКЛ
+    }
   //---------КОНЕЦ УПРАВЛЯЕМ РЕЛЕ 1-4 ------------------//
-
 
 
   // Если включен режим "Установка в 0".
   if (ZeroStateStend == 1 and RunStateStend == 1) {
-    //движение ШД-1 к нижнему концевому
-    if (SQDown_Read != 1)        // было  (SQDown_Read != 0)
-    {
-      //Serial.println("---- движение ШД-1 к нижнему концевому ----- ");
-      currentMillis1 = micros();
-
-      Dir1_LO; // направление движение
-      // с постоянной скоростью движения
-      if (currentMillis1 - previousMillisD1 >= speedZero_1) {
-        previousMillisD1 = currentMillis1;
-        Step1_HI;    // высокий уровень пина
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step1_LO;    // низкий уровень пина
-
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step1_HI;    // высокий уровень пина
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step1_LO;    // низкий уровень пина
-
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step1_HI;    // высокий уровень пина
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step1_LO;    // низкий уровень пина
-      }
+    // Пока не сработал нижний концевик двигаться вниз.
+    if (SQDown_Read != 1) {
+      stepper1->setSpeedInHz(speedZero_1);
+      stepper1->runBackward();
+    // Иначе резко остановиться.
+    } else {
+      stepper1->forceStopAndNewPosition(0);
     }
 
-    //--------движение ШД-2 к концевому  "0" ----------//
+    // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
     if (SQZero_Read != 1) {
-      currentMillis2 = micros();
+      stepper2->setSpeedInHz(speedZero_2);
+      stepper2->runBackward();
+    // Иначе плавно остановиться.
+    } else {
+      stepper2->stopMove();
+    }
 
-      Dir2_LO; // направление движение           // было  Dir2_HI;
-      // с постоянной скоростью движения
-      if (currentMillis2 - previousMillisD2 >= speedZero_2) {
-        previousMillisD2 = currentMillis2;
-
-        Step2_HI;    // высокий уровень пина
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step2_LO;    // низкий уровень пина
-
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step2_HI;    // высокий уровень пина
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step2_LO;    // низкий уровень пина
-
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step2_HI;    // высокий уровень пина
-        delayMicroseconds(delPuls);  // ждём X мкс
-        Step2_LO;    // низкий уровень пина
-
-
-        /*    // !было  раньше
-          if (stepState2 == LOW) {stepState2 = HIGH; Step2_HI; }
-          else
-          { stepState2 = LOW; Step2_LO;  }
-        */
-      }// end if (currentMillis2
-
-    }// end if (digitalRead(SQZero)!=1
-
-    // когда оба КВ сработают
-    if (SQZero_Read == 1 and SQDown_Read == 1)  {      // было  (SQZero_Read == 0 and SQDown_Read == 0)
+    // Если сработали оба концевых выключателя, то выключить режим "Установка в 0".
+    if (SQZero_Read == 1 and SQDown_Read == 1) {
       ZeroStateStend = 0;
       EndZeroState = 1;
     }
-
-  } // end if (ZeroState==1)
-
-  //------ конец режима установка в "0" ------//
+  }
 
 
-
-  //------ включен режим РАБОТА  движение от джойстиков ------//
+  // Режим "Работа от джойстиков".
   if ((RunStateStend == 1) and (ZeroStateStend != 1))
     // Если не нажата кнопка АВАРИЯ и нет аварии от ШД и есть связь.
     if ((AlarmBtnState != 1) and AlarmDRV == false and fLink == true) {
       NoRunState = 0;
 
-      // если есть изменения в позиции СЕРВО то крутим ее
+      // Если есть изменения в позиции СЕРВО, то крутим ее.
       if ((valServo != oldvalServo))
         Servo1.write(valServo);
       oldvalServo = valServo;
 
-      // ----- РАБОТА  ШД 1  ------------
-      if (RezistX < 525 and RezistX > 480)
-        Step1_LO;
 
+      // Управление приводом вертикального перемещения камеры.
       // Если не в крайнем верхнем положении.
-      if (SQUp_Read != 1)
-      {
+      if (SQUp_Read != 1) {
         // Если направление вверх.
         if (RezistX > (525)) {
-          currentMillis1 = micros();
+          // Вычислить скорость.
+          speed1 = map(RezistX, 525, 1024, 0, MaxSpeed1Hz);
 
-          // Вычислить интервал, спустя который можно посылать повторный импульс.
-          // Чем ближе к нулю, тем больше интервал.
-          interval1 = map(RezistX, 525, 1023, MaxX, MinX);
-
-          // Направление движения вверх.
-          Dir1_HI;
-
-          if (currentMillis1 - previousMillisD1 >= interval1) {
-            previousMillisD1 = currentMillis1;
-
-            Step1_HI;    // высокий уровень пина
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_LO;    // низкий уровень пина
-
-
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_HI;    // высокий уровень пина
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_LO;    // низкий уровень пина
-
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_HI;    // высокий уровень пина
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_LO;    // низкий уровень пина
-          }
+          // Задать скорость и направление.
+          stepper1->setSpeedInHz(speed1);
+          stepper1->runForward();
         }
       }
 
@@ -521,86 +425,34 @@ void loop() {
       {
         // Если направление вниз.
         if (RezistX < (480)) {
-          interval1 = map(RezistX, 0, 480, MinX, MaxX);
-          currentMillis1 = micros();
-          // Направление движения вниз.
-          Dir1_LO;
+          // Вычислить скорость.
+          speed1 = map(RezistX, 0, 480, 0, MaxSpeed1Hz);
 
-          if (currentMillis1 - previousMillisD1 >= interval1) {
-            previousMillisD1 = currentMillis1;
-
-            Step1_HI;    // высокий уровень пина
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_LO;    // низкий уровень пина
-
-
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_HI;    // высокий уровень пина
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_LO;    // низкий уровень пина
-
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_HI;    // высокий уровень пина
-            delayMicroseconds(delPuls);  // ждём X мкс
-            Step1_LO;    // низкий уровень пина
-          }
+          // Задать скорость и направление.
+          stepper1->setSpeedInHz(speed1);
+          stepper1->runBackward();
         }
       }
 
-
-      // ----- РАБОТА  ШД 2  ------------
-      if (RezistY < 525 and RezistY > 480)
-        Step2_LO;
-
-      // Движение вправо.
+      // Управление приводом вращения платформы.
+      // Если направление вправо.
       if (RezistY > (525)) {
-        currentMillis2 = micros();
-        interval2 = map(RezistY, 525, 1023, MaxY, MinY);
+        // Вычислить скорость.
+        speed2 = map(RezistY, 525, 1024, 0, MaxSpeed2Hz);
 
-        // Направление движения вправо.
-        Dir2_LO;
-
-        if (currentMillis2 - previousMillisD2 >= interval2) {
-          previousMillisD2 = currentMillis2;
-          Step2_HI;    // высокий уровень пина
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_LO;    // низкий уровень пина
-
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_HI;    // высокий уровень пина
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_LO;    // низкий уровень пина
-
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_HI;    // высокий уровень пина
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_LO;    // низкий уровень пина
-        }
+        // Задать скорость и направление.
+        stepper2->setSpeedInHz(speed2);
+        stepper2->runForward();
       }
 
-      // Если направление движения влево.
+      // Если направление влево.
       if (RezistY < (480)) {
-        interval2 = map(RezistY, 0, 480, MinY, MaxY);
-        currentMillis2 = micros();
-        Dir2_HI;
+        // Вычислить скорость.
+        speed2 = map(RezistY, 0, 480, 0, MaxSpeed2Hz);
 
-        if (currentMillis2 - previousMillisD2 >= interval2) {
-          previousMillisD2 = currentMillis2;
-          Step2_HI;    // высокий уровень пина
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_LO;    // низкий уровень пина
-
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_HI;    // высокий уровень пина
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_LO;    // низкий уровень пина
-
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_HI;    // высокий уровень пина
-          delayMicroseconds(delPuls);  // ждём X мкс
-          Step2_LO;    // низкий уровень пина
-        }
+        // Задать скорость и направление.
+        stepper2->setSpeedInHz(speed2);
+        stepper2->runBackward();
       }
     }
-  //------ конец режима РАБОТА движение от джойстиков ------//
 }
