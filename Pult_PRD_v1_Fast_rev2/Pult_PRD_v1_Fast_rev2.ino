@@ -1,13 +1,16 @@
 // правка скетча под схему от 30,03,21
 
 // Сторонняя библиотека для работы с портами ввода-вывода.
-#include <CyberLib.h>
-
+#include ".\libraries\CyberLib\CyberLib.cpp"
 #include <SoftwareSerial.h>
+
 // Номер пина для RX (TX на пульте).
 #define RX 3
 // Номер пина для TX (RX на пульте).
 #define TX 2
+// DEBUG
+//#define RX 2
+//#define TX 1
 
 SoftwareSerial mySerial(RX, TX);
 
@@ -15,7 +18,7 @@ SoftwareSerial mySerial(RX, TX);
 #define potpin_Read A3_Read
 int valServo;
 
-// Алиас команды чтения положения потенциометра горизонтального перемещения.
+// Алиас команды чтения положения потенциометра поворота платформы.
 #define RezistX_Read A0_Read
 // Алиас команды чтения положения потенциометра вертикального перемещения камеры.
 #define RezistY_Read A1_Read
@@ -272,6 +275,16 @@ void loop()
     // указываем ему буфер-структуру, но приводим тип к byte*
     // размер можно указать через sizeof()
     mySerial.write((byte*)&buf, sizeof(buf));
+
+    // DEBUG
+    //char hex[4];
+    //for(int i=0; i < sizeof(buf); i++)
+    //{
+    //  sprintf(hex, "%02X", ((byte*)&buf)[i]);
+    //  mySerial.write(hex);
+    //}
+    //mySerial.write("\n");
+    
     tSend = millis(); // перезапускаем таймер ПРД
   }
 
@@ -289,4 +302,4 @@ void loop()
   else
     LedZero_LO;// иначе не горит
 
-}//loop
+}
