@@ -221,10 +221,10 @@ byte crc8_bytes(byte *buffer, byte size) {
   return crc;
 }
 
-void stopSteppers()
+void forceStopSteppers()
 {
-  stepper1->stopMove();
-  stepper2->stopMove();
+  stepper1->forceStopAndNewPosition(0);
+  stepper2->forceStopAndNewPosition(0);
 }
 
 void processControls()
@@ -241,7 +241,7 @@ void processControls()
   {
     // Если в крайнем верхнем положении.
     if (SQUp_Read == 0)
-      stepper1->stopMove();
+      stepper1->forceStopAndNewPosition(0);
     else
     {
       // Вычислить скорость.
@@ -258,7 +258,7 @@ void processControls()
   {
     // Если в крайнем нижнем положении.
     if (SQDown_Read == 0)
-      stepper1->stopMove();
+      stepper1->forceStopAndNewPosition(0);
     else
     {
       // Вычислить скорость.
@@ -308,7 +308,7 @@ void processMoveToZero()
   // Иначе остановиться.
   else
   {
-    stepper1->stopMove();
+    stepper1->forceStopAndNewPosition(0);
   }
 
   // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
@@ -439,10 +439,10 @@ void loop() {
       response.NoRun = 0;
       response.EndZero = EndZeroState;
 
-      if ((SQZero_Read == 1) and (SQDown_Read == 1))
-        response.SQZ = 1;
-      else
+      if ((SQZero_Read == 0) and (SQDown_Read == 0))
         response.SQZ = 0;
+      else
+        response.SQZ = 1;
 
       response.AlarmStend = AlarmDRV;
       response.Return = request.Return; //счетчик отправлений обратно
@@ -472,7 +472,7 @@ void loop() {
   // то остановить двигатели.
   if ((AlarmBtnState != 0) or AlarmDRV or !fLink or (RunStateStend == 0))
   {
-    stopSteppers();
+    forceStopSteppers();
   }
   else
   {

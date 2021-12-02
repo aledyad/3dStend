@@ -226,7 +226,6 @@ void loop()
     }
     else if (ZeroBtn_Read == LOW and ZeroState == 1)
     { ZeroState = 0;
-
       delay(500);
     }
 
