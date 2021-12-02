@@ -55,8 +55,8 @@ FastAccelStepper *stepper2 = NULL;
 #define STEPPER2_MAX_SPEED_HZ 1000
 
 // Cкорость в режиме "Переместить в "0" для двигателей в Гц.
-#define STEPPER1_MOVE_ZERO_SPEED_HZ 100
-#define STEPPER2_MOVE_ZERO_SPEED_HZ 500
+#define STEPPER1_MOVE_ZERO_SPEED_HZ STEPPER1_MAX_SPEED_HZ/2
+#define STEPPER2_MOVE_ZERO_SPEED_HZ STEPPER2_MAX_SPEED_HZ/2
 
 // Задать алиасы для пинов реле.
 #define Rele1_Out  D14_Out   // А0
@@ -164,10 +164,10 @@ void setupRelaysPins()
   Rele6_HI;
 }
 
-
 void setup() {
-  Serial.begin(9600);
-  Serial.setTimeout(3);
+  Serial.begin(9600);                  // Инициируем программный последовательный порт
+  Serial.setTimeout(3);                // таймаут влияет скорость обработки по умолчанию 1000 мс
+  
   Servo1.attach(servoPin);
 
   setupRelaysPins();
@@ -193,10 +193,10 @@ void setup() {
   // Создать объекты для работы с ШД.
   stepper1 = engine.stepperConnectToPin(stepPinStepper1);
   stepper1->setDirectionPin(dirPinStepper1);
-  stepper1->setAcceleration(1000);
+  stepper1->setAcceleration(STEPPER1_MAX_SPEED_HZ*4);
   stepper2 = engine.stepperConnectToPin(stepPinStepper2);
   stepper2->setDirectionPin(dirPinStepper2);
-  stepper2->setAcceleration(200);
+  stepper2->setAcceleration(STEPPER2_MAX_SPEED_HZ*4);
 
   // Пин "Авария" ШД1 установить в режим ввода и подтянуть к Vcc.
   Alm1_In;
@@ -240,7 +240,7 @@ void processControls()
   if (RezistX > 525)
   {
     // Если в крайнем верхнем положении.
-    if (SQUp_Read != 0)
+    if (SQUp_Read == 0)
       stepper1->stopMove();
     else
     {
@@ -253,29 +253,39 @@ void processControls()
     }
 
   }
-  else
-    // Если направление вниз.
-    if (RezistX < 480)
-    {
-      // Если в крайнем нижнем положении.
-      if (SQDown_Read != 0)
-        stepper1->stopMove();
-      else
-      {
-        // Вычислить скорость.
-        stepperSpeed = map(RezistX, 0, 480, 0, STEPPER1_MAX_SPEED_HZ);
-
-        // Задать скорость и направление.
-        stepper1->setSpeedInHz(stepperSpeed);
-        stepper1->runBackward();
-      }
-    }
-    else
+  // Если направление вниз.
+  else if (RezistX < 480)
+  {
+    // Если в крайнем нижнем положении.
+    if (SQDown_Read == 0)
       stepper1->stopMove();
+    else
+    {
+      // Вычислить скорость.
+      stepperSpeed = map(RezistX, 480, 0, 0, STEPPER1_MAX_SPEED_HZ);
+
+      // Задать скорость и направление.
+      stepper1->setSpeedInHz(stepperSpeed);
+      stepper1->runBackward();
+    }
+  }
+  else
+    stepper1->stopMove();
 
   // Управление приводом вращения платформы.
+  // Если направление влево.
+  if (RezistY < 480)
+  {
+    // Вычислить скорость.
+    stepperSpeed = map(RezistY, 480, 0, 0, STEPPER2_MAX_SPEED_HZ);
+
+    // Задать скорость и направление.
+    stepper2->setSpeedInHz(stepperSpeed);
+    stepper2->runBackward();
+  }
   // Если направление вправо.
-  if (RezistY > 525) {
+  else if (RezistY > 525)
+  {
     // Вычислить скорость.
     stepperSpeed = map(RezistY, 525, 1024, 0, STEPPER2_MAX_SPEED_HZ);
 
@@ -283,38 +293,31 @@ void processControls()
     stepper2->setSpeedInHz(stepperSpeed);
     stepper2->runForward();
   }
-  // Если направление влево.
-  if (RezistY < 480) {
-    // Вычислить скорость.
-    stepperSpeed = map(RezistY, 0, 480, 0, STEPPER2_MAX_SPEED_HZ);
-
-    // Задать скорость и направление.
-    stepper2->setSpeedInHz(stepperSpeed);
-    stepper2->runBackward();
-  }
+  else
+    stepper2->stopMove();
 }
 
 void processMoveToZero()
 {
   // Пока не сработал нижний концевик двигаться вниз.
-  if (SQDown_Read != 1)
+  if (SQDown_Read == 1)
   {
     stepper1->setSpeedInHz(STEPPER1_MOVE_ZERO_SPEED_HZ);
     stepper1->runBackward();
-    // Иначе остановиться.
   }
+  // Иначе остановиться.
   else
   {
     stepper1->stopMove();
   }
 
   // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
-  if (SQZero_Read != 1)
+  if (SQZero_Read == 1)
   {
     stepper2->setSpeedInHz(STEPPER2_MOVE_ZERO_SPEED_HZ);
     stepper2->runBackward();
-    // Иначе плавно остановиться.
   }
+  // Иначе остановиться.
   else
   {
     stepper2->stopMove();
@@ -322,7 +325,7 @@ void processMoveToZero()
 
   // Если сработали оба концевых выключателя, то выключить режим "Установка в 0"
   // и выставить признак того, что стенд находится в нулевом положении.
-  if (SQZero_Read == 1 and SQDown_Read == 1)
+  if ((SQZero_Read == 0) and (SQDown_Read == 0))
   {
     MoveToZeroState = 0;
     EndZeroState = 1;
@@ -436,7 +439,7 @@ void loop() {
       response.NoRun = 0;
       response.EndZero = EndZeroState;
 
-      if (SQZero_Read == 1 and SQDown_Read == 1)
+      if ((SQZero_Read == 1) and (SQDown_Read == 1))
         response.SQZ = 1;
       else
         response.SQZ = 0;

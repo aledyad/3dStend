@@ -4,13 +4,10 @@
 #include ".\libraries\CyberLib\CyberLib.cpp"
 #include <SoftwareSerial.h>
 
-// Номер пина для RX (TX на пульте).
-#define RX 3
-// Номер пина для TX (RX на пульте).
-#define TX 2
-// DEBUG
-//#define RX 2
-//#define TX 1
+// Номер пина для TX.
+#define TX 3
+// Номер пина для RX.
+#define RX 2
 
 SoftwareSerial mySerial(RX, TX);
 
@@ -136,7 +133,10 @@ byte crc8_bytes(byte *buffer, byte size) {
 }
 
 void setup()
-{ //Serial.begin(9600);                   // Инициируем аппаратный последовательный порт
+{ 
+  // DEBUG
+  //Serial.begin(9600);                    // Инициируем аппаратный последовательный порт
+  
   mySerial.begin(9600);                  // Инициируем программный последовательный порт
   mySerial.setTimeout(3);                // таймаут влияет скорость обработки по умолчанию 1000 мс
 
@@ -153,11 +153,10 @@ void setup()
 
 
   tSend = millis();
-}// end setup
+}
 
 void loop()
 {
-
   // читаем родным методом readBytes()
   // указываем ему буфер-структуру, но приводим тип к byte*
   // размер можно указать через sizeof()
@@ -172,15 +171,28 @@ void loop()
     if (CRCOtv == 0) {
       CRC = true;
 
+      // DEBUG
+      //char hex[4];
+      //for(int i=0; i < sizeof(bufOtv); i++)
+      //{
+      //  sprintf(hex, "%02X", ((byte*)&bufOtv)[i]);
+      //  Serial.write(hex);
+      //}
+      //Serial.write("\n");
+
       if (bufOtv.EndZero == 1)   ZeroState = 0; // пришел флаг установка в 0 закончена
       SQZ = bufOtv.SQZ;                   //  сост. КВ 0 (ZERO)
       AlarmStend = bufOtv.AlarmStend;     //  сигнал АВАРИЯ со стенда
       CountReturn = bufOtv.Return;        //  возврат счетчика контроля связи
 
     } // end  if (CRCOtv == 0)
-    else CRC = false;
-
-  }// end if (mySerial.readBytes
+    else
+    {
+      CRC = false;
+      // DEBUG
+      //Serial.write("CRC fail\n");
+    }
+  }
 
   // считаем сколько пришло обратно импульсов
   if ((count - CountReturn) > 110) countAlarm++;
@@ -298,7 +310,7 @@ void loop()
       LedZero_Inv;
     }// end  if (millis()> timerZero +
   }
-  else if (SQZ == 1) LedZero_HI; //если сработал КВ то горит постоянно
+  else if (SQZ == 0) LedZero_HI; //если сработал КВ то горит постоянно
   else
     LedZero_LO;// иначе не горит
 
