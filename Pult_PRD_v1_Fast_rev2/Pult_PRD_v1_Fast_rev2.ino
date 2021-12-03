@@ -1,17 +1,24 @@
 // правка скетча под схему от 30,03,21
-#include <CyberLib.h>       // Подключаем шуструю библиотеку для работы с портами IO
 
+// Сторонняя библиотека для работы с портами ввода-вывода.
+#include ".\libraries\CyberLib\CyberLib.cpp"
 #include <SoftwareSerial.h>
-#define RX 3                            // * Определяем вывод RX (TX на модуле)
-#define TX 2                            // * Определяем вывод TX (RX на модуле)
+
+// Номер пина для TX.
+#define TX 3
+// Номер пина для RX.
+#define RX 2
 
 SoftwareSerial mySerial(RX, TX);
 
-#define potpin_Read A3_Read // переменник СЕРВО
+// Алиас команды чтения положения потенциометра поворота камеры.
+#define potpin_Read A3_Read
 int valServo;
 
-#define RezistX_Read A0_Read //   переменник ШД-2  горизонтальное перемещение
-#define RezistY_Read A1_Read //   переменник ШД-1  вертикальное перемещение
+// Алиас команды чтения положения потенциометра поворота платформы.
+#define RezistX_Read A0_Read
+// Алиас команды чтения положения потенциометра вертикального перемещения камеры.
+#define RezistY_Read A1_Read
 
 // кнопка авария pin D8
 #define AlarmBtn_In   D8_In
@@ -70,6 +77,7 @@ byte ZeroState = 0; // статус уст в "0"  0-нет/1-ДА
 byte SQZ = 0; // статус уст в "0"  0-нет/1-ДА
 byte AlarmState = 0; // статус уст в "0"  0-нет/1-ДА
 byte AlarmStend = 0; // статус уст в "0"  0-нет/1-ДА
+// Количество отправленных пакетов на стенд. Сбрасывается в 0 при достижении значения 250.
 byte count = 0;
 boolean fLink = true;
 boolean CRC = true;
@@ -96,23 +104,22 @@ struct Str {
   byte crc; // контрольная сумма
 };
 
-// структура для ПРМ
-
+// Структура для отправки данных на пульт.
 struct StrOtv {
-  byte NoRun; // режим РАБОТА  0- НЕТ / 1 - ДА
-  byte EndZero; // // режим движ к "0"  0- НЕТ / 1 - ДА
+  byte NoRun;       // режим РАБОТА  0- НЕТ / 1 - ДА
+  byte EndZero;     // режим движ к "0"  0- НЕТ / 1 - ДА
   byte SQZ;
-  byte AlarmStend; // // режим ававрия на стенде  0- НЕТ / 1 - ДА
-  byte Link; // // режим LINK  0- НЕТ / 1 - ДА
-  byte Return; //cчетчик для контроля за связью
-  byte crc;    // контрольная сумма
+  byte AlarmStend;  // режим ававрия на стенде  0- НЕТ / 1 - ДА
+  byte Link;        // режим LINK  0- НЕТ / 1 - ДА
+  byte Return;      //cчетчик для контроля за связью
+  byte crc;         // Контрольная сумма.
 };
 
 // создаём саму структуру
 StrOtv bufOtv;
 
 
-// функция для расчёта crc контрольной суммы
+// Рассчитать контрольную сумму.
 byte crc8_bytes(byte *buffer, byte size) {
   byte crc = 0;
   for (byte i = 0; i < size; i++) {
@@ -126,7 +133,10 @@ byte crc8_bytes(byte *buffer, byte size) {
 }
 
 void setup()
-{ //Serial.begin(9600);                   // Инициируем аппаратный последовательный порт
+{ 
+  // DEBUG
+  //Serial.begin(9600);                    // Инициируем аппаратный последовательный порт
+  
   mySerial.begin(9600);                  // Инициируем программный последовательный порт
   mySerial.setTimeout(3);                // таймаут влияет скорость обработки по умолчанию 1000 мс
 
@@ -143,11 +153,10 @@ void setup()
 
 
   tSend = millis();
-}// end setup
+}
 
 void loop()
 {
-
   // читаем родным методом readBytes()
   // указываем ему буфер-структуру, но приводим тип к byte*
   // размер можно указать через sizeof()
@@ -162,15 +171,28 @@ void loop()
     if (CRCOtv == 0) {
       CRC = true;
 
+      // DEBUG
+      //char hex[4];
+      //for(int i=0; i < sizeof(bufOtv); i++)
+      //{
+      //  sprintf(hex, "%02X", ((byte*)&bufOtv)[i]);
+      //  Serial.write(hex);
+      //}
+      //Serial.write("\n");
+
       if (bufOtv.EndZero == 1)   ZeroState = 0; // пришел флаг установка в 0 закончена
       SQZ = bufOtv.SQZ;                   //  сост. КВ 0 (ZERO)
       AlarmStend = bufOtv.AlarmStend;     //  сигнал АВАРИЯ со стенда
       CountReturn = bufOtv.Return;        //  возврат счетчика контроля связи
 
     } // end  if (CRCOtv == 0)
-    else CRC = false;
-
-  }// end if (mySerial.readBytes
+    else
+    {
+      CRC = false;
+      // DEBUG
+      //Serial.write("CRC fail\n");
+    }
+  }
 
   // считаем сколько пришло обратно импульсов
   if ((count - CountReturn) > 110) countAlarm++;
@@ -204,7 +226,6 @@ void loop()
     }
     else if (ZeroBtn_Read == LOW and ZeroState == 1)
     { ZeroState = 0;
-
       delay(500);
     }
 
@@ -265,6 +286,16 @@ void loop()
     // указываем ему буфер-структуру, но приводим тип к byte*
     // размер можно указать через sizeof()
     mySerial.write((byte*)&buf, sizeof(buf));
+
+    // DEBUG
+    //char hex[4];
+    //for(int i=0; i < sizeof(buf); i++)
+    //{
+    //  sprintf(hex, "%02X", ((byte*)&buf)[i]);
+    //  mySerial.write(hex);
+    //}
+    //mySerial.write("\n");
+    
     tSend = millis(); // перезапускаем таймер ПРД
   }
 
@@ -282,4 +313,4 @@ void loop()
   else
     LedZero_LO;// иначе не горит
 
-}//loop
+}
