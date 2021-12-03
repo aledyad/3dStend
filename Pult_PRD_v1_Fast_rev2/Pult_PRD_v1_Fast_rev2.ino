@@ -309,7 +309,7 @@ void loop()
       LedZero_Inv;
     }// end  if (millis()> timerZero +
   }
-  else if (SQZ == 0) LedZero_HI; //если сработал КВ то горит постоянно
+  else if (SQZ == 1) LedZero_HI; //если сработал КВ то горит постоянно
   else
     LedZero_LO;// иначе не горит
 

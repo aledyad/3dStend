@@ -41,9 +41,9 @@ int servoPin = 5;
 // Объект для работы с сервоприводом поворота камеры.
 ServoTimer2 Servo1;
 // Угол отклонения сервопривода поворота камеры.
-int valServo;
+int valServo = 0;
 // Предыдущее значение отклонения сервопривода поворота камеры.
-int oldvalServo;
+int oldvalServo = 0;
 
 // Объекты для управления шаговыми двигателями.
 FastAccelStepperEngine engine = FastAccelStepperEngine();
@@ -123,6 +123,11 @@ FastAccelStepper *stepper2 = NULL;
 #define SQZero_In   D2_In
 #define SQZero_Read D2_Read
 #define SQZero_HI   D2_High
+
+// Концевой выключатель включен.
+#define SQ_ON       1
+// Концевой выключатель выключен.
+#define SQ_OFF      0
 
 byte RunStateStend = 0;   // статус Работа  0-нет/1-ДА
 byte MoveToZeroState = 0; // статус Установка в нулевое положение 0-нет/1-ДА
@@ -230,7 +235,8 @@ void forceStopSteppers()
 void processControls()
 {
   // Если есть изменения в позиции СЕРВО, то крутим ее.
-  if (valServo != oldvalServo) {
+  if (valServo != oldvalServo)
+  {
     Servo1.write(valServo);
     oldvalServo = valServo;
   }
@@ -240,7 +246,7 @@ void processControls()
   if (RezistX > 525)
   {
     // Если в крайнем верхнем положении.
-    if (SQUp_Read == 0)
+    if (SQUp_Read == SQ_ON)
       stepper1->forceStopAndNewPosition(0);
     else
     {
@@ -257,7 +263,7 @@ void processControls()
   else if (RezistX < 480)
   {
     // Если в крайнем нижнем положении.
-    if (SQDown_Read == 0)
+    if (SQDown_Read == SQ_ON)
       stepper1->forceStopAndNewPosition(0);
     else
     {
@@ -300,7 +306,7 @@ void processControls()
 void processMoveToZero()
 {
   // Пока не сработал нижний концевик двигаться вниз.
-  if (SQDown_Read == 1)
+  if (SQDown_Read == SQ_OFF)
   {
     stepper1->setSpeedInHz(STEPPER1_MOVE_ZERO_SPEED_HZ);
     stepper1->runBackward();
@@ -312,7 +318,7 @@ void processMoveToZero()
   }
 
   // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
-  if (SQZero_Read == 1)
+  if (SQZero_Read == SQ_OFF)
   {
     stepper2->setSpeedInHz(STEPPER2_MOVE_ZERO_SPEED_HZ);
     stepper2->runBackward();
@@ -325,7 +331,7 @@ void processMoveToZero()
 
   // Если сработали оба концевых выключателя, то выключить режим "Установка в 0"
   // и выставить признак того, что стенд находится в нулевом положении.
-  if ((SQZero_Read == 0) and (SQDown_Read == 0))
+  if ((SQZero_Read == SQ_ON) and (SQDown_Read == SQ_ON))
   {
     MoveToZeroState = 0;
     EndZeroState = 1;
@@ -439,10 +445,11 @@ void loop() {
       response.NoRun = 0;
       response.EndZero = EndZeroState;
 
-      if ((SQZero_Read == 0) and (SQDown_Read == 0))
-        response.SQZ = 0;
-      else
+      // Если стенд находится в нулевом положении, то отправить соответствующий флаг.
+      if ((SQZero_Read == SQ_ON) and (SQDown_Read == SQ_ON))
         response.SQZ = 1;
+      else
+        response.SQZ = 0;
 
       response.AlarmStend = AlarmDRV;
       response.Return = request.Return; //счетчик отправлений обратно
