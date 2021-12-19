@@ -51,12 +51,12 @@ FastAccelStepper *stepper1 = NULL;
 FastAccelStepper *stepper2 = NULL;
 
 // Алиасы максимальной скорости двигателей в Гц.
-#define STEPPER1_MAX_SPEED_HZ 200
-#define STEPPER2_MAX_SPEED_HZ 1000
+#define STEPPER1_MAX_SPEED_HZ 800
+#define STEPPER2_MAX_SPEED_HZ 8000
 
 // Cкорость в режиме "Переместить в "0" для двигателей в Гц.
-#define STEPPER1_MOVE_ZERO_SPEED_HZ STEPPER1_MAX_SPEED_HZ/2
-#define STEPPER2_MOVE_ZERO_SPEED_HZ STEPPER2_MAX_SPEED_HZ/2
+#define STEPPER1_MOVE_ZERO_SPEED_HZ STEPPER1_MAX_SPEED_HZ
+#define STEPPER2_MOVE_ZERO_SPEED_HZ STEPPER2_MAX_SPEED_HZ
 
 // Задать алиасы для пинов реле.
 #define Rele1_Out  D14_Out   // А0
@@ -198,10 +198,10 @@ void setup() {
   // Создать объекты для работы с ШД.
   stepper1 = engine.stepperConnectToPin(stepPinStepper1);
   stepper1->setDirectionPin(dirPinStepper1);
-  stepper1->setAcceleration(STEPPER1_MAX_SPEED_HZ*4);
+  stepper1->setAcceleration(STEPPER1_MAX_SPEED_HZ*2);
   stepper2 = engine.stepperConnectToPin(stepPinStepper2);
   stepper2->setDirectionPin(dirPinStepper2);
-  stepper2->setAcceleration(STEPPER2_MAX_SPEED_HZ*4);
+  stepper2->setAcceleration(STEPPER2_MAX_SPEED_HZ*2);
 
   // Пин "Авария" ШД1 установить в режим ввода и подтянуть к Vcc.
   Alm1_In;
@@ -287,7 +287,7 @@ void processControls()
 
     // Задать скорость и направление.
     stepper2->setSpeedInHz(stepperSpeed);
-    stepper2->runBackward();
+    stepper2->runForward();
   }
   // Если направление вправо.
   else if (RezistY > 525)
@@ -297,7 +297,7 @@ void processControls()
 
     // Задать скорость и направление.
     stepper2->setSpeedInHz(stepperSpeed);
-    stepper2->runForward();
+    stepper2->runBackward();
   }
   else
     stepper2->stopMove();
@@ -326,6 +326,7 @@ void processMoveToZero()
   // Иначе остановиться.
   else
   {
+    stepper2->setSpeedInHz(STEPPER2_MOVE_ZERO_SPEED_HZ / 10);
     stepper2->stopMove();
   }
 
