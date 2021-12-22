@@ -40,9 +40,9 @@ Request request;
 int servoPin = 5;
 // Объект для работы с сервоприводом поворота камеры.
 ServoTimer2 Servo1;
-// Угол отклонения сервопривода поворота камеры.
+// Длительность импульсов управления сервоприводом поворота камеры.
 int valServo = 0;
-// Предыдущее значение отклонения сервопривода поворота камеры.
+// Предыдущее значение valServo.
 int oldvalServo = 0;
 
 // Объекты для управления шаговыми двигателями.
@@ -404,7 +404,7 @@ void loop() {
       // для стенда
       RezistX = request.VRx;
       RezistY = request.VRy;
-      valServo = request.VR;
+      valServo = map(request.VR, 0, 179, MIN_PULSE_WIDTH, MAX_PULSE_WIDTH);
       RunStateStend = request.Run;
       MoveToZeroState = request.Zero;
 
