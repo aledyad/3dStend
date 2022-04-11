@@ -13,7 +13,7 @@ struct Response {
   byte NoRun;       // режим РАБОТА             0 - НЕТ / 1 - ДА
   byte EndZero;     // режим движение к "0"     0 - НЕТ / 1 - ДА
   byte SQZ;         // концевой 0
-  byte AlarmStend;  // режим авария на стенде   0 - НЕТ / 1 - ДА
+  byte AlarmStend;  // режим авария на стенде  0 - НЕТ / 1 - ДА
   byte Link;        // режим LINK               0 - НЕТ / 1 - ДА
   byte Return;      // cчетчик для контроля за связью
   byte crc;         // контрольная сумма
@@ -83,7 +83,7 @@ FastAccelStepper *stepper2 = NULL;
 #define Rele6_HI   D19_High
 #define Rele6_LO   D19_Low
 
-// Задать алиас для пина "Индикатор связи".
+// Задать алиася для пина "Индикатор связи".
 #define LedLink_Out D4_Out
 #define LedLink_HI  D4_High
 #define LedLink_LO  D4_Low
@@ -135,7 +135,7 @@ byte EndZeroState = 0;    // статус Установка в нулевое �
 byte AlarmBtnState = 0;   // статус Аварийная остановка 0-нет/1-ДА
 
 // Счетчик итераций отсутствия команд от пульта.
-byte linkLostCounter = 0;
+byte counter = 0;
 
 // Признак необходимости отправить ответ на пульт.
 boolean needSendResponse = false;
@@ -148,6 +148,9 @@ boolean AlarmDRV = false;  // флаг авария на ШД
 word RezistX, RezistY = 0;
 // Переменная вычисления требуемой скорости двигателя.
 word stepperSpeed;
+
+// "Время", когда был отправлен на пульт последний ответ.
+unsigned long tSend = 0;
 
 void setupRelaysPins()
 {
@@ -206,6 +209,8 @@ void setup() {
   // Пин "Авария" ШД2 установить в режим ввода и подтянуть к Vcc.
   Alm2_In;
   Alm2_HI;
+
+  tSend = millis();
 }
 
 // Вычислить CRC.
@@ -298,10 +303,9 @@ void processControls()
     stepper2->stopMove();
 }
 
-// Перевести стенд в нулевое положение.
 void processMoveToZero()
 {
-  // Пока не сработал нижний концевик, двигаться вниз.
+  // Пока не сработал нижний концевик двигаться вниз.
   if (SQDown_Read == SQ_OFF)
   {
     stepper1->setSpeedInHz(STEPPER1_MOVE_ZERO_SPEED_HZ);
@@ -313,7 +317,7 @@ void processMoveToZero()
     stepper1->forceStopAndNewPosition(0);
   }
 
-  // Пока не сработал концевик "Нулевое положение" платформы, двигаться назад.
+  // Пока не сработал концевик "Нулевое положение" платформы двигаться назад.
   if (SQZero_Read == SQ_OFF)
   {
     stepper2->setSpeedInHz(STEPPER2_MOVE_ZERO_SPEED_HZ);
@@ -339,18 +343,18 @@ void processMoveToZero()
 void processRelays()
 {
   //---- что делаем если АВАРИЯ или нет связи  -----//
-  if (AlarmBtnState == 1 or fLink == false or AlarmDRV == true ) {
+  if (AlarmBtnState == 1 or  fLink == false or AlarmDRV == true ) {
     Rele1_HI; // РЕЛЕ 1 ВЫКЛ
     Rele2_HI; // РЕЛЕ 2 ВЫКЛ
     Rele3_HI; // РЕЛЕ 3 ВЫКЛ
     Rele4_LO; // РЕЛЕ 4 ВКЛ
   }
-  else if (AlarmBtnState == 0 and fLink == true) // нет АВАРИЯ и есть связь
+  else if (AlarmBtnState == 0 and  fLink == true) // нет АВАРИЯ и есть связь
     Rele4_HI;// РЕЛЕ 4 ВЫКЛ
 
 
   //------ реж НЕ РАБОТА и нет аварии и есть связь -----//
-  if ((RunStateStend == 0) and (AlarmBtnState == 0) and fLink == true and AlarmDRV == false) {
+  if ((RunStateStend == 0) and (AlarmBtnState == 0) and  fLink == true and AlarmDRV == false) {
     Rele1_LO;// РЕЛЕ 1 ВКЛ
     Rele2_LO;// РЕЛЕ 2 ВКЛ
   }// end if (RunStateStend==0)
@@ -358,28 +362,26 @@ void processRelays()
 
   // если реж РАБОТА
   if (RunStateStend == 1) {
-    if (AlarmBtnState == 1 or fLink == false or AlarmDRV == true ) {
+    if (AlarmBtnState == 1 or  fLink == false or AlarmDRV == true ) {
       Rele4_LO; // РЕЛЕ 4 ВКЛ
-      Rele1_HI; // РЕЛЕ 1 ВЫКЛ
-      Rele2_HI; // РЕЛЕ 2 ВКЛ
-      Rele3_HI; // РЕЛЕ 3 ВКЛ
+      Rele1_HI;// РЕЛЕ 1 ВЫКЛ
+      Rele2_HI;// РЕЛЕ 2 ВКЛ
+      Rele3_HI;// РЕЛЕ 3 ВКЛ
     } else {
-      Rele4_HI; // РЕЛЕ 4 ВЫКЛ
-      Rele1_HI; // РЕЛЕ 1 ВЫКЛ
-      Rele2_LO; // РЕЛЕ 2 ВКЛ
-      Rele3_LO; // РЕЛЕ 3 ВКЛ
+      Rele4_HI;// РЕЛЕ 4 ВЫКЛ
+      Rele1_HI;// РЕЛЕ 1 ВЫКЛ
+      Rele2_LO;// РЕЛЕ 2 ВКЛ
+      Rele3_LO;// РЕЛЕ 3 ВКЛ
     }
-  } 
-  else if (RunStateStend == 0)
-  {
-    Rele3_HI; // РЕЛЕ 3 ВЫКЛ
+  } else if (RunStateStend == 0) {
+    Rele3_HI;  // РЕЛЕ 3 ВЫКЛ
   }
 }
 
-void processLinkLed()
+void processLinkLed(bool linkExists)
 {
   // Если связь с пультом есть
-  if (fLink)
+  if (linkExists)
     // То мигает.
     LedLink_Inv;
   else
@@ -387,7 +389,6 @@ void processLinkLed()
     LedLink_HI;
 }
 
-// Главный цикл программы.
 void loop() {
 
   // Получение команды с пульта.
@@ -397,7 +398,7 @@ void loop() {
     // Если контрольная сумма совпадает.
     if (CRC == 0)
     {
-      linkLostCounter = 0;
+      counter = 0;
       fLink = true;
 
       // для стенда
@@ -424,13 +425,14 @@ void loop() {
       if (AlarmBtnState == 1)
         EndZeroState = 0;
       needSendResponse = true;
+      tSend = millis();
     }
   }
   else
   {
-    // Если нет связи, то начать отсчет.
-    linkLostCounter++;
-    if (linkLostCounter > 250)
+    //  если нет обмена данными вкл.счетчик
+    counter++;
+    if (counter > 250)
     {
       // Сбросить флаг наличия связи с пультом.
       fLink = false;
@@ -439,24 +441,25 @@ void loop() {
 
   //--------- ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
   if (needSendResponse == true)
-  {
-    response.NoRun = 0;
-    response.EndZero = EndZeroState;
+    if (millis() > tSend + 10) // через 10 мсек
+    {
+      response.NoRun = 0;
+      response.EndZero = EndZeroState;
 
-    // Если стенд находится в нулевом положении, то отправить соответствующий флаг.
-    if ((SQZero_Read == SQ_ON) and (SQDown_Read == SQ_ON))
-      response.SQZ = 1;
-    else
-      response.SQZ = 0;
+      // Если стенд находится в нулевом положении, то отправить соответствующий флаг.
+      if ((SQZero_Read == SQ_ON) and (SQDown_Read == SQ_ON))
+        response.SQZ = 1;
+      else
+        response.SQZ = 0;
 
-    response.AlarmStend = AlarmDRV;
-    response.Return = request.Return; //счетчик отправлений обратно
-    // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
-    response.crc = crc8_bytes((byte*)&response, sizeof(response) - 1);
+      response.AlarmStend = AlarmDRV;
+      response.Return = request.Return; //счетчик отправлений обратно
+      // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
+      response.crc = crc8_bytes((byte*)&response, sizeof(response) - 1);
 
-    Serial.write((byte*)&response, sizeof(response));
-    needSendResponse = false;
-  }
+      Serial.write((byte*)&response, sizeof(response));
+      needSendResponse = false;
+    }
   //---------КОНЕЦ ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
 
 
@@ -466,7 +469,7 @@ void loop() {
   else if (Alm1_Read == 1 and Alm2_Read == 1)
     AlarmDRV = false; // флаг сигнала АЛАРМ сброшен
 
-  processLinkLed();
+  processLinkLed(fLink);
   processRelays();
 
   // Если (или):
