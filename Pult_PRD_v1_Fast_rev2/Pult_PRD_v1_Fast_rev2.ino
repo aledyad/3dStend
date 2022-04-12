@@ -173,8 +173,8 @@ CountReturn = bufOtv.Return;        //  возврат счетчика конт
   }// end if (mySerial.readBytes
 
 // считаем сколько пришло обратно импульсов
-if ((count-CountReturn)>110) countAlarm++;
-
+// n = ((x + 250) - y) mod 250
+if (((int)count + 250 - (int)CountReturn) % 250 > 110) countAlarm++;
 else countAlarm=0;
 
 
