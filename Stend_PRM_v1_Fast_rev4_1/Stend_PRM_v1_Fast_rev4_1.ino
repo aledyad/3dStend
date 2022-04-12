@@ -139,6 +139,8 @@ byte counter = 0;
 
 // Признак необходимости отправить ответ на пульт.
 boolean needSendResponse = false;
+// Значение счетчика отправленных запросов с пульта.
+byte requestReturn;
 // Признак наличия связи с пультом.
 boolean fLink = true;
 boolean fRelePK = false;   // флаг реле ПК
@@ -424,6 +426,7 @@ void loop() {
 
       if (AlarmBtnState == 1)
         EndZeroState = 0;
+      requestReturn = request.Return;
       needSendResponse = true;
       tSend = millis();
     }
@@ -453,7 +456,7 @@ void loop() {
         response.SQZ = 0;
 
       response.AlarmStend = AlarmDRV;
-      response.Return = request.Return; //счетчик отправлений обратно
+      response.Return = requestReturn; //счетчик отправлений обратно
       // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
       response.crc = crc8_bytes((byte*)&response, sizeof(response) - 1);
 
