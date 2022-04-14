@@ -62,20 +62,20 @@ FastAccelStepper *stepper2 = NULL;
 // Реле Зеленый свет спереди.
 #define ReleGreenFront_OUT D14_Out // А0
 #define ReleGreenFront_HI  D14_High
-#define ReleGreenFront_ON  D14_High
-#define ReleGreenFront_OFF D14_Low
+#define ReleGreenFront_ON  D14_Low
+#define ReleGreenFront_OFF D14_High
 
 // Реле Зеленый свет сзади.
 #define ReleGreenBack_OUT  D15_Out // А1
 #define ReleGreenBack_HI   D15_High
-#define ReleGreenBack_ON   D15_High
-#define ReleGreenBack_OFF  D15_Low
+#define ReleGreenBack_ON   D15_Low
+#define ReleGreenBack_OFF  D15_High
 
 // Реле Белый свет.
 #define ReleWhite_OUT      D16_Out // А2
 #define ReleWhite_HI       D16_High
-#define ReleWhite_ON       D16_High
-#define ReleWhite_OFF      D16_Low
+#define ReleWhite_ON       D16_Low
+#define ReleWhite_OFF      D16_High
 
 // Реле Красный свет.
 #define ReleAlarm_OUT      D17_Out // А3
@@ -372,7 +372,6 @@ void processRelays()
     ReleGreenBack_ON;
   }
 
-
   if (RunStateStend == 1)
   {
     if (AlarmBtnState == 1 or fLink == false or AlarmDRV == true)
@@ -447,8 +446,8 @@ void loop() {
   }
   else
   {
-    // Если новой команды нет в течение 750 мс, то сбросить флаг наличия связи с пультом.
-    if (millis() - lastRequestTime > 750)
+    // Если новой команды нет в течение 1000 мс, то сбросить флаг наличия связи с пультом.
+    if (millis() - lastRequestTime > 1000)
       fLink = false;
   }
 
