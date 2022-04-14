@@ -59,29 +59,39 @@ FastAccelStepper *stepper2 = NULL;
 #define STEPPER2_MOVE_ZERO_SPEED_HZ STEPPER2_MAX_SPEED_HZ
 
 // Задать алиасы для пинов реле.
-#define Rele1_Out  D14_Out   // А0
-#define Rele1_HI   D14_High
-#define Rele1_LO   D14_Low
+// Реле Зеленый свет спереди.
+#define ReleGreenFront_OUT D14_Out // А0
+#define ReleGreenFront_HI  D14_High
+#define ReleGreenFront_ON  D14_Low
+#define ReleGreenFront_OFF D14_High
 
-#define Rele2_Out  D15_Out   // А1
-#define Rele2_HI   D15_High
-#define Rele2_LO   D15_Low
+// Реле Зеленый свет сзади.
+#define ReleGreenBack_OUT  D15_Out // А1
+#define ReleGreenBack_HI   D15_High
+#define ReleGreenBack_ON   D15_Low
+#define ReleGreenBack_OFF  D15_High
 
-#define Rele3_Out  D16_Out   // А2
-#define Rele3_HI   D16_High
-#define Rele3_LO   D16_Low
+// Реле Белый свет.
+#define ReleWhite_OUT      D16_Out // А2
+#define ReleWhite_HI       D16_High
+#define ReleWhite_ON       D16_Low
+#define ReleWhite_OFF      D16_High
 
-#define Rele4_Out  D17_Out   // А3
-#define Rele4_HI   D17_High
-#define Rele4_LO   D17_Low
+// Реле Красный свет.
+#define ReleAlarm_OUT      D17_Out // А3
+#define ReleAlarm_HIGH     D17_High
+#define ReleAlarm_ON       D17_Low
+#define ReleAlarm_OFF      D17_High
 
-#define RelePK_Out D18_Out   // А4
-#define RelePK_HI  D18_High
-#define RelePK_LO  D18_Low
+// Реле включения ПК.
+#define RelePK_OUT         D18_Out // А4
+#define RelePK_HI          D18_High
+#define RelePK_LO          D18_Low
 
-#define Rele6_Out  D19_Out   // А5
-#define Rele6_HI   D19_High
-#define Rele6_LO   D19_Low
+// Реле сброса драйверов двигателей.
+#define ReleResetDrv_OUT   D19_Out // А5
+#define ReleResetDrv_HI    D19_High
+#define ReleResetDrv_LO    D19_Low
 
 // Задать алиася для пина "Индикатор связи".
 #define LedLink_Out D4_Out
@@ -129,7 +139,7 @@ FastAccelStepper *stepper2 = NULL;
 // Концевой выключатель выключен.
 #define SQ_OFF      0
 
-byte RunStateStend = 0;   // статус Работа  0-нет/1-ДА
+byte RunStateStend = 0;   // статус Работа 0-нет/1-ДА
 byte MoveToZeroState = 0; // статус Установка в нулевое положение 0-нет/1-ДА
 byte EndZeroState = 0;    // статус Установка в нулевое положение завершена 0-нет/1-ДА
 byte AlarmBtnState = 0;   // статус Аварийная остановка 0-нет/1-ДА
@@ -151,29 +161,29 @@ word RezistX, RezistY = 0;
 // Переменная вычисления требуемой скорости двигателя.
 word stepperSpeed;
 
-// "Время", когда был отправлен на пульт последний ответ.
-unsigned long tSend = 0;
+// Время, когда был получен последний запрос.
+unsigned long lastRequestTime = 0;
 
 void setupRelaysPins()
 {
   // Пины реле установить в режим вывода и записать HIGH.
-  Rele1_Out;
-  Rele1_HI;
-  Rele2_Out;
-  Rele2_HI;
-  Rele3_Out;
-  Rele3_HI;
-  Rele4_Out;
-  Rele4_HI;
-  RelePK_Out;
+  ReleGreenFront_OUT;
+  ReleGreenFront_HI;
+  ReleGreenBack_OUT;
+  ReleGreenBack_HI;
+  ReleWhite_OUT;
+  ReleWhite_HI;
+  ReleAlarm_OUT;
+  ReleAlarm_HIGH;
+  RelePK_OUT;
   RelePK_HI;
-  Rele6_Out;
-  Rele6_HI;
+  ReleResetDrv_OUT;
+  ReleResetDrv_HI;
 }
 
 void setup() {
-  Serial.begin(9600);                  // Инициируем программный последовательный порт
-  Serial.setTimeout(3);                // таймаут влияет скорость обработки по умолчанию 1000 мс
+  Serial.begin(9600);
+  Serial.setTimeout(50);
   
   Servo1.attach(servoPin);
 
@@ -211,8 +221,6 @@ void setup() {
   // Пин "Авария" ШД2 установить в режим ввода и подтянуть к Vcc.
   Alm2_In;
   Alm2_HI;
-
-  tSend = millis();
 }
 
 // Вычислить CRC.
@@ -341,42 +349,49 @@ void processMoveToZero()
   }
 }
 
-// Управление Реле 1-4.
+// Управление реле цветных ламп.
 void processRelays()
 {
   //---- что делаем если АВАРИЯ или нет связи  -----//
-  if (AlarmBtnState == 1 or  fLink == false or AlarmDRV == true ) {
-    Rele1_HI; // РЕЛЕ 1 ВЫКЛ
-    Rele2_HI; // РЕЛЕ 2 ВЫКЛ
-    Rele3_HI; // РЕЛЕ 3 ВЫКЛ
-    Rele4_LO; // РЕЛЕ 4 ВКЛ
+  if (AlarmBtnState == 1 or fLink == false or AlarmDRV == true)
+  {
+    ReleGreenFront_OFF;
+    ReleGreenBack_OFF;
+    ReleWhite_OFF;
+    ReleAlarm_ON;
   }
-  else if (AlarmBtnState == 0 and  fLink == true) // нет АВАРИЯ и есть связь
-    Rele4_HI;// РЕЛЕ 4 ВЫКЛ
+  else
+    if (AlarmBtnState == 0 and fLink == true) // нет АВАРИЯ и есть связь
+      ReleAlarm_OFF;
 
 
   //------ реж НЕ РАБОТА и нет аварии и есть связь -----//
-  if ((RunStateStend == 0) and (AlarmBtnState == 0) and  fLink == true and AlarmDRV == false) {
-    Rele1_LO;// РЕЛЕ 1 ВКЛ
-    Rele2_LO;// РЕЛЕ 2 ВКЛ
-  }// end if (RunStateStend==0)
+  if ((RunStateStend == 0) and (AlarmBtnState == 0) and (fLink == true) and (AlarmDRV == false))
+  {
+    ReleGreenFront_ON;
+    ReleGreenBack_ON;
+  }
 
-
-  // если реж РАБОТА
-  if (RunStateStend == 1) {
-    if (AlarmBtnState == 1 or  fLink == false or AlarmDRV == true ) {
-      Rele4_LO; // РЕЛЕ 4 ВКЛ
-      Rele1_HI;// РЕЛЕ 1 ВЫКЛ
-      Rele2_HI;// РЕЛЕ 2 ВКЛ
-      Rele3_HI;// РЕЛЕ 3 ВКЛ
-    } else {
-      Rele4_HI;// РЕЛЕ 4 ВЫКЛ
-      Rele1_HI;// РЕЛЕ 1 ВЫКЛ
-      Rele2_LO;// РЕЛЕ 2 ВКЛ
-      Rele3_LO;// РЕЛЕ 3 ВКЛ
+  if (RunStateStend == 1)
+  {
+    if (AlarmBtnState == 1 or fLink == false or AlarmDRV == true)
+    {
+      ReleAlarm_ON;
+      ReleGreenFront_OFF;
+      ReleGreenBack_OFF;
+      ReleWhite_OFF;
     }
-  } else if (RunStateStend == 0) {
-    Rele3_HI;  // РЕЛЕ 3 ВЫКЛ
+    else
+    {
+      ReleAlarm_OFF;
+      ReleGreenFront_OFF;
+      ReleGreenBack_ON;
+      ReleWhite_ON;
+    }
+  }
+  else
+  {
+    ReleWhite_OFF;
   }
 }
 
@@ -392,7 +407,6 @@ void processLinkLed(bool linkExists)
 }
 
 void loop() {
-
   // Получение команды с пульта.
   if (Serial.readBytes((byte*)&request, sizeof(request)))
   {
@@ -400,8 +414,8 @@ void loop() {
     // Если контрольная сумма совпадает.
     if (CRC == 0)
     {
-      counter = 0;
       fLink = true;
+      lastRequestTime = millis();
 
       // для стенда
       RezistX = request.VRx;
@@ -420,51 +434,42 @@ void loop() {
         RelePK_HI; // выкл с реле ПК
       // вкл с реле 6
       if (request.P6 == 1)
-        Rele6_LO;
+        ReleResetDrv_LO;
       else
-        Rele6_HI; // выкл с реле 6
+        ReleResetDrv_HI; // выкл с реле 6
 
       if (AlarmBtnState == 1)
         EndZeroState = 0;
       requestReturn = request.Return;
       needSendResponse = true;
-      tSend = millis();
     }
   }
   else
   {
-    //  если нет обмена данными вкл.счетчик
-    counter++;
-    if (counter > 250)
-    {
-      // Сбросить флаг наличия связи с пультом.
+    // Если новой команды нет в течение 1000 мс, то сбросить флаг наличия связи с пультом.
+    if (millis() - lastRequestTime > 1000)
       fLink = false;
-    }
   }
 
-  //--------- ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
   if (needSendResponse == true)
-    if (millis() > tSend + 10) // через 10 мсек
-    {
-      response.NoRun = 0;
-      response.EndZero = EndZeroState;
+  {
+    response.NoRun = 0;
+    response.EndZero = EndZeroState;
 
-      // Если стенд находится в нулевом положении, то отправить соответствующий флаг.
-      if ((SQZero_Read == SQ_ON) and (SQDown_Read == SQ_ON))
-        response.SQZ = 1;
-      else
-        response.SQZ = 0;
+    // Если стенд находится в нулевом положении, то отправить соответствующий флаг.
+    if ((SQZero_Read == SQ_ON) and (SQDown_Read == SQ_ON))
+      response.SQZ = 1;
+    else
+      response.SQZ = 0;
 
-      response.AlarmStend = AlarmDRV;
-      response.Return = requestReturn; //счетчик отправлений обратно
-      // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
-      response.crc = crc8_bytes((byte*)&response, sizeof(response) - 1);
+    response.AlarmStend = AlarmDRV;
+    response.Return = requestReturn; //счетчик отправлений обратно
+    // последний байт - crc. Считаем crc всех байт кроме последнего, то есть кроме самого crc!!! (размер-1)
+    response.crc = crc8_bytes((byte*)&response, sizeof(response) - 1);
 
-      Serial.write((byte*)&response, sizeof(response));
-      needSendResponse = false;
-    }
-  //---------КОНЕЦ ОТПРАВКА ОБРАТНЫХ СООБЩЕНИЙ НА ПУЛЬТ ----------//
-
+    Serial.write((byte*)&response, sizeof(response));
+    needSendResponse = false;
+  }
 
   // --- сигналы АЛАРМ с драйверов ШД ------//
   if (Alm1_Read == 0 or Alm2_Read == 0)
